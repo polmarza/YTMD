@@ -289,4 +289,8 @@ TEXTS = {
     "Copy commands": "Copiar comandos",
     "Copied": "Copiado",
     "Check again": "Comprobar de nuevo",
+    # --- pausar / cancelar
+    "Pausing after the current song…": "Pausando al terminar la canción en curso…",
+    "Paused · {n} downloaded. It will continue where it left off.":
+        "En pausa · {n} descargadas. Seguirá donde se quedó.",
 }

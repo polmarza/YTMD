@@ -82,8 +82,11 @@ _ALBUM_PREFIX = re.compile(r"^(?:album|ep|single)\s*-\s*", re.I)
 _TOPIC = re.compile(r"\s*-\s*Topic$")
 
 
-class Cancelled(Exception):
-    pass
+class Cancelled(yt_dlp.utils.DownloadCancelled):
+    """Cancelar o pausar. Hereda de DownloadCancelled porque es la única interrupción que yt-dlp no
+    trata como el fallo de una canción suelta: con `ignoreerrors` activo, cualquier otra excepción
+    solo saltaría la canción actual y la lista seguiría."""
+    msg = "Cancelled"
 
 
 # "(Official Video)", "[Official Music Video]", "(Lyric Video)", "(4K Remaster)", "(Audio)"…
@@ -201,6 +204,12 @@ class Downloader:
         elif d["status"] == "finished":
             self.cb.progress(100, tr("Converting and tagging…"))
 
+    def _stop_check(self, info, *, incomplete=False):
+        """Filtro de yt-dlp: si se ha pedido parar, corta antes de empezar la siguiente canción."""
+        if self._cancel.is_set():
+            raise Cancelled()
+        return None
+
     def _skipped(self, name):
         self._index += 1
         self.cb.item(self._index, self._total, name)
@@ -288,6 +297,7 @@ class Downloader:
             "retries": 10,
             "extractor_retries": 5,
             "js_runtimes": {"deno": {}, "node": {}},
+            "match_filter": self._stop_check,      # se consulta antes de cada canción de la lista
             "progress_hooks": [self._progress_hook],
             "postprocessor_hooks": [self._pp_hook],
             "logger": self._logger(),

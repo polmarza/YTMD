@@ -139,6 +139,7 @@ class MainWindow(QMainWindow):
         self.worker: DownloadWorker | None = None
         self.running: Job | None = None
         self.queue_paused = False
+        self._pausing = False        # se pidió pausar con una lista a medias: vuelve a la cola al parar
         self.wait_left = 0
         self.wait_timer = QTimer(self, interval=1000)
         self.wait_timer.timeout.connect(self._tick_wait)
@@ -696,6 +697,7 @@ class MainWindow(QMainWindow):
 
     def _remove_job(self, job: Job):
         if job is self.running:
+            self._pausing = False        # cancelar manda sobre pausar
             self.worker.cancel()
             job.row.set_state("running", tr("Cancelling…"))
             return
@@ -716,6 +718,12 @@ class MainWindow(QMainWindow):
 
     def _set_queue_paused(self, paused: bool):
         self.queue_paused = paused
+        if paused and self.running and not self._pausing:
+            # pausar también detiene lo que se está descargando (tras la canción en curso);
+            # al reanudar, la lista sigue donde se quedó: lo ya descargado se salta
+            self._pausing = True
+            self.worker.cancel()
+            self.running.row.set_state("running", tr("Pausing after the current song…"))
         if paused:
             self.wait_timer.stop()
             for j in self._pending()[:1]:
@@ -794,10 +802,15 @@ class MainWindow(QMainWindow):
         self.thread.quit()
         self.thread.wait()
         self.thread = self.worker = self.running = None
+        paused_here, self._pausing = self._pausing, False
         if error:
             job.state = "error"
             job.row.set_state("error", tr("Error: {error}", error=error.splitlines()[0][:160]))
             self.downloads.add_log("✖ " + error)
+        elif res.cancelled and paused_here:
+            job.state = "pending"            # vuelve a la cola: al reanudar continúa donde se quedó
+            job.row.set_state("pending", tr("Paused · {n} downloaded. It will continue where it left off.",
+                                            n=res.done))
         elif res.cancelled:
             job.state = "cancelled"
             job.row.set_state("cancelled", tr("Cancelled · {n} downloaded", n=res.done))
