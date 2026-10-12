@@ -5,7 +5,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 
-from i18n import tr
+from ytmd.i18n import tr
 
 # Canción de ejemplo con licencia libre: «Carefree», de Kevin MacLeod, publicada por el propio autor
 # en YouTube con licencia Creative Commons Attribution (CC BY 4.0): se puede descargar y compartir

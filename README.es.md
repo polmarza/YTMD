@@ -48,11 +48,11 @@ Necesitas **Python 3.10+**, **ffmpeg** y **Node.js** (o Deno; yt-dlp lo usa para
 brew install ffmpeg node
 git clone https://github.com/polmarza/YTMD.git && cd YTMD
 ./run.command                       # la primera vez crea el entorno e instala dependencias
-.venv/bin/python make_app.py        # opcional: crea "YT Music Downloader.app" para el Dock
+.venv/bin/python tools/make_app.py  # opcional: crea "YT Music Downloader.app" para el Dock
 ```
 
 Después, doble clic en `YT Music Downloader.app` (o en `run.command`). Si mueves la carpeta del
-proyecto, vuelve a ejecutar `make_app.py`.
+proyecto, vuelve a ejecutar `tools/make_app.py`.
 
 ### Windows
 
@@ -205,17 +205,38 @@ Todo está en **Configuración → Actualizaciones**:
 
 ### Para quien publique versiones
 
-1. Sube el número en `version.py` (`__version__`).
+1. Sube el número en `ytmd/version.py` (`__version__`).
 2. Haz commit y crea una etiqueta con el mismo número: `git tag v1.1.0 && git push --tags`.
 3. En GitHub, *Releases → Draft a new release*, elige esa etiqueta y escribe qué cambia.
-4. Comprueba que `GITHUB_REPO` en `version.py` apunta a tu repositorio (`usuario/nombre`).
+4. Comprueba que `GITHUB_REPO` en `ytmd/version.py` apunta a tu repositorio (`usuario/nombre`).
    Mientras esté vacío, la app no busca versiones nuevas.
 
 ## Traducciones
 
-Los textos están en `i18n_<idioma>.py` (clave = texto en inglés del código). Para añadir un idioma:
-copia `i18n_es.py`, tradúcelo, añade el idioma a `LANGUAGES` en `i18n.py` y ejecuta
+Los textos están en `ytmd/locales/<idioma>.py` (clave = texto en inglés del código). Para añadir un idioma:
+copia `ytmd/locales/es.py`, tradúcelo, añade el idioma a `LANGUAGES` en `ytmd/i18n.py` y ejecuta
 `python tools/check_i18n.py`, que avisa de textos que faltan o sobran.
+
+## Estructura del proyecto
+
+```
+app.py              punto de entrada (python app.py)
+run.command         lanzador de doble clic para macOS
+run.bat             lanzador de doble clic para Windows
+ytmd/               la app
+  app.py            ventana principal: navegación, reproductor, cola de descargas, ajustes
+  downloader.py     descargas con yt-dlp (formatos, pausas, reintentos, duplicados)
+  library.py        tu carpeta de música: colecciones, etiquetas y portadas
+  importer.py       lee tu biblioteca de YouTube Music (ytmusicapi)
+  updater.py        búsqueda de versiones nuevas y actualización desde la app
+  onboarding.py     primer arranque: canción de ejemplo y aviso de programas que faltan
+  i18n.py           traducciones; locales/es.py tiene los textos en español
+  version.py        número de versión y repositorio de GitHub
+  ui/               pantallas, piezas de la interfaz y estilos
+assets/             icono de la app
+docs/screenshots/   imágenes del README
+tools/              make_app.py (.app de macOS), check_i18n.py, capturas
+```
 
 ## Si deja de funcionar
 

@@ -1,4 +1,4 @@
-"""Translations. The English text in the code is the key; other languages live in i18n_<code>.py.
+"""Translations. The English text in the code is the key; other languages live in ytmd/locales/<code>.py.
 
     tr("Add to queue")                     -> "Añadir a la cola" (when the language is Spanish)
     tr("Hello {name}", name="Pol")         -> formatted after translating
@@ -22,7 +22,7 @@ def set_language(code: str) -> str:
     """Select the language; unknown codes fall back to English. Returns the one in use."""
     global _table, _lang
     _lang = code if code in LANGUAGES else DEFAULT
-    _table = {} if _lang == DEFAULT else importlib.import_module(f"i18n_{_lang}").TEXTS
+    _table = {} if _lang == DEFAULT else importlib.import_module(f"ytmd.locales.{_lang}").TEXTS
     return _lang
 
 

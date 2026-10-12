@@ -19,7 +19,7 @@ from PySide6.QtCore import QPoint, QSettings  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-import i18n  # noqa: E402
+from ytmd import i18n  # noqa: E402
 
 LANG = os.environ.get("YTMD_LANG", "en")
 i18n.set_language(LANG)
@@ -33,14 +33,14 @@ def main(library_dir: str, out_dir: str):
     settings.setValue("browser", "chrome")
 
     app = QApplication(sys.argv)
-    import app as ytmd
-    import importer
-    from ui import style
-    from ui.import_dialog import ImportDialog
-    from ui.widgets import CardDelegate
+    from ytmd import app as ytmd_app
+    from ytmd import importer
+    from ytmd.ui import style
+    from ytmd.ui.import_dialog import ImportDialog
+    from ytmd.ui.widgets import CardDelegate
     app.setStyleSheet(style.stylesheet())
 
-    w = ytmd.MainWindow()
+    w = ytmd_app.MainWindow()
     w.resize(1400, 880)
     w.show()
     QTest.qWait(500)
@@ -134,7 +134,7 @@ def main(library_dir: str, out_dir: str):
     settings.setValue("out_dir", empty)
     settings.setValue("folder_confirmed", False)
     settings.setValue("guide_hidden", False)
-    w = ytmd.MainWindow()
+    w = ytmd_app.MainWindow()
     w.resize(1400, 880)
     w.show()
     QTest.qWait(400)

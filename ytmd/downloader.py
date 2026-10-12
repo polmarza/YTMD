@@ -18,9 +18,9 @@ from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.postprocessor.metadataparser import MetadataParserPP
 from yt_dlp.utils import sanitize_filename
 
-import library
-from browser_cookies import cookie_source
-from i18n import tr, trn
+from ytmd import library
+from ytmd.browser_cookies import cookie_source
+from ytmd.i18n import tr, trn
 
 # Los ajustes guardan ids estables (no el texto visible, que cambia con el idioma).
 # id -> (códec para FFmpegExtractAudio, calidad)

@@ -1,4 +1,4 @@
-"""Checks the translations: every tr()/trn() text must exist in i18n_<lang>.py, and vice versa.
+"""Checks the translations: every tr()/trn() text must exist in ytmd/locales/<lang>.py, and vice versa.
 
     python tools/check_i18n.py          # check all languages
     python tools/check_i18n.py --keys   # print every translatable text (to start a new language)
@@ -30,8 +30,9 @@ def _strings(node) -> list[str]:
 def collect() -> dict[str, list[str]]:
     """text -> places where it is used"""
     found: dict[str, list[str]] = {}
-    files = [f for f in os.listdir(ROOT) if f.endswith(".py") and f != "i18n.py"] + \
-            [os.path.join("ui", f) for f in os.listdir(os.path.join(ROOT, "ui")) if f.endswith(".py")]
+    pkg = os.path.join(ROOT, "ytmd")
+    files = [os.path.relpath(os.path.join(d, f), ROOT) for d, _s, fs in os.walk(pkg) for f in fs
+             if f.endswith(".py") and "locales" not in d and f != "i18n.py"]
     for rel in sorted(files):
         tree = ast.parse(open(os.path.join(ROOT, rel), encoding="utf-8").read())
         for node in ast.walk(tree):
@@ -66,11 +67,11 @@ def main() -> int:
     if "<NOT A LITERAL>" in keys:
         print("tr() with a non-literal text (can't be translated):", keys.pop("<NOT A LITERAL>"))
         bad += 1
-    from i18n import LANGUAGES
+    from ytmd.i18n import LANGUAGES
     for code in LANGUAGES:
         if code == "en":
             continue
-        texts = importlib.import_module(f"i18n_{code}").TEXTS
+        texts = importlib.import_module(f"ytmd.locales.{code}").TEXTS
         missing = sorted(set(keys) - set(texts))
         unused = sorted(set(texts) - set(keys))
         wrong = [k for k in keys if k in texts and placeholders(k) != placeholders(texts[k])]

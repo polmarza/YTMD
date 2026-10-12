@@ -4,8 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPixmap
 
-import library
-from ui import style
+from ytmd import library
+from ytmd.ui import style
 
 
 def _decode(data: bytes | None, size: int) -> QImage | None:

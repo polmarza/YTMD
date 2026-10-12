@@ -6,5 +6,5 @@ __pycache__/
 # Generados en local (python make_app.py / primer arranque)
 YT Music Downloader.app/
 icon.iconset/
-ui/chevron-down.png
+ytmd/ui/chevron-down.png
 *.zip

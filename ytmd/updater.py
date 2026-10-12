@@ -13,7 +13,7 @@ from importlib import metadata
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from i18n import tr
+from ytmd.i18n import tr
 
 
 def _nums(version: str) -> tuple[int, ...]:
@@ -81,7 +81,7 @@ def update_ytdlp(dry_run: bool = False) -> tuple[str, str]:
     return before, q.stdout.strip() or before
 
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))     # carpeta del proyecto (git)
 
 
 def is_git_checkout(root: str = ROOT) -> bool:

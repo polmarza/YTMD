@@ -1,8 +1,8 @@
 """Generates icon.png and 'YT Music Downloader.app' (a double-click launcher). Run it once."""
 import os, plistlib, shutil, stat, subprocess, sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-APP = os.path.join(HERE, "YT Music Downloader.app")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))     # carpeta del proyecto
+APP = os.path.join(ROOT, "YT Music Downloader.app")
 
 
 def make_icon(path):
@@ -28,7 +28,7 @@ def make_icon(path):
 def main():
     if sys.platform != "darwin":
         sys.exit("make_app.py only works on macOS. On Windows use run.bat.")
-    icon_png = os.path.join(HERE, "icon.png")
+    icon_png = os.path.join(ROOT, "assets", "icon.png")
     make_icon(icon_png)
 
     shutil.rmtree(APP, ignore_errors=True)
@@ -36,7 +36,7 @@ def main():
     res = os.path.join(APP, "Contents", "Resources")
     os.makedirs(macos); os.makedirs(res)
 
-    iconset = os.path.join(HERE, "icon.iconset")
+    iconset = os.path.join(ROOT, "icon.iconset")
     os.makedirs(iconset, exist_ok=True)
     for size in (16, 32, 128, 256, 512):
         for scale in (1, 2):
@@ -50,7 +50,7 @@ def main():
     launcher = os.path.join(macos, "launcher")
     with open(launcher, "w") as f:
         f.write(f'''#!/bin/zsh
-DIR={HERE!r}
+DIR={ROOT!r}
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 if [ ! -d "$DIR" ]; then
   osascript -e 'display alert "Cannot find the project folder" message "Is the drive it lives on connected?"'

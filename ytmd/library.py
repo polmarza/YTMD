@@ -23,7 +23,7 @@ from mutagen.flac import FLAC, Picture
 from mutagen.id3 import ID3
 from mutagen.mp4 import MP4
 
-from i18n import tr, trn
+from ytmd.i18n import tr, trn
 
 AUDIO_EXT = {".flac", ".wav", ".mp3", ".m4a", ".opus", ".ogg", ".aac"}
 META_FILE = ".coleccion.json"

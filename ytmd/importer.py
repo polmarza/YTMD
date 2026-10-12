@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from yt_dlp.cookies import extract_cookies_from_browser
 from ytmusicapi import YTMusic
 
-from browser_cookies import cookie_source
-from i18n import tr
+from ytmd.browser_cookies import cookie_source
+from ytmd.i18n import tr
 
 ORIGIN = "https://music.youtube.com"
 SKIP_PREFIXES = ("SE", "RDPN")     # pódcasts: "Episodios para más tarde", "Nuevos episodios"

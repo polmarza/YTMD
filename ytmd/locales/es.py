@@ -203,8 +203,8 @@ TEXTS = {
     "A new version is available: <b>{tag}</b> (you have {current}).":
         "Hay una versión nueva: <b>{tag}</b> (tienes la {current}).",
     "Version {tag} is available.": "Hay una versión nueva: {tag}.",
-    "This copy has no repository configured (GITHUB_REPO in version.py).":
-        "Esta copia no tiene un repositorio configurado (GITHUB_REPO en version.py).",
+    "This copy has no repository configured (GITHUB_REPO in ytmd/version.py).":
+        "Esta copia no tiene un repositorio configurado (GITHUB_REPO en ytmd/version.py).",
     "Checking…": "Buscando…",
     "Couldn't check: {error}": "No se pudo comprobar: {error}",
     "You're up to date (version {version}).": "Estás al día (versión {version}).",

@@ -10,10 +10,10 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate, QVBoxLayout,
 )
 
-import library
-from i18n import tr, trn
-from ui import style
-from ui.covers import Covers
+from ytmd import library
+from ytmd.i18n import tr, trn
+from ytmd.ui import style
+from ytmd.ui.covers import Covers
 
 ROLE = Qt.UserRole + 1
 

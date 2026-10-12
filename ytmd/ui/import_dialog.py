@@ -10,10 +10,10 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout,
 )
 
-import importer
-import library
-from i18n import tr, trn
-from ui import style
+from ytmd import importer
+from ytmd import library
+from ytmd.i18n import tr, trn
+from ytmd.ui import style
 
 # MB aproximados por canción (~4 min) según el formato, para avisar del espacio
 MB_PER_SONG = {"flac": 25, "wav": 40, "mp3": 9, "original": 4}

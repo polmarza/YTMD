@@ -11,14 +11,14 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
-import library
-import i18n
-from downloader import BROWSERS, FORMATS, PAUSES, browser_label, format_label, pause_label
-from i18n import tr, trn
-from onboarding import SAMPLE_CREDIT
-from ui import style
-from ui.covers import Covers
-from ui.widgets import LEAD_W, LEAD_X, ROLE, CardDelegate, QueueRow, TrackDelegate, fmt_long, icon_button
+from ytmd import library
+from ytmd import i18n
+from ytmd.downloader import BROWSERS, FORMATS, PAUSES, browser_label, format_label, pause_label
+from ytmd.i18n import tr, trn
+from ytmd.onboarding import SAMPLE_CREDIT
+from ytmd.ui import style
+from ytmd.ui.covers import Covers
+from ytmd.ui.widgets import LEAD_W, LEAD_X, ROLE, CardDelegate, QueueRow, TrackDelegate, fmt_long, icon_button
 
 
 def search_box(placeholder: str) -> QLineEdit:

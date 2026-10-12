@@ -7,7 +7,7 @@ import sys
 import qtawesome as qta
 from PySide6.QtGui import QColor, QFont
 
-from i18n import tr
+from ytmd.i18n import tr
 
 
 
