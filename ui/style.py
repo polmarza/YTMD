@@ -147,6 +147,9 @@ QHeaderView::section {{ background: transparent; color: {MUTED}; border: none;
     border: 1px solid #2c2c2c; border-radius: 14px; }}
 #step {{ background: rgba(255,255,255,0.05); border-radius: 12px; }}
 #stepnum {{ color: {ACCENT}; font-weight: 700; font-size: 13px; }}
+#guidecard {{ background: rgba(255,255,255,0.05); border-radius: 12px; }}
+#guideicon {{ background: rgba(255,255,255,0.10); border-radius: 22px; }}
+#guideicon[done="true"] {{ background: rgba(62,196,109,0.16); }}
 #warn {{ background: #2b1e08; border: 1px solid #5a3e10; border-radius: 10px; }}
 #warn QLabel {{ color: #f3c27a; }}
 

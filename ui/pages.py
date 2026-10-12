@@ -8,7 +8,7 @@ from PySide6.QtGui import QAction, QColor, QFont, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QListView, QListWidget, QListWidgetItem, QMenu, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 import library
@@ -124,6 +124,33 @@ class CardGrid(QListWidget):
     def __init__(self):
         super().__init__()
         self._on_button = False
+        # crece con su contenido: el scroll lo hace la página de Inicio entera
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def fit_height(self):
+        """Alto justo para todas las portadas visibles, según cuántas caben por fila."""
+        per_row = max(1, self.viewport().width() // self.gridSize().width())
+        n = sum(1 for i in range(self.count()) if not self.item(i).isHidden())
+        rows = -(-n // per_row) if n else 0
+        h = rows * self.gridSize().height() + 2 * self.frameWidth() + 8
+        if self.height() != h:
+            self.setFixedHeight(h)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if e.size().width() != e.oldSize().width():
+            self.fit_height()
+
+    def wheelEvent(self, e):
+        """La rueda desplaza la página de Inicio entera (la rejilla no tiene scroll propio)."""
+        area = self.parentWidget()
+        while area is not None and not isinstance(area, QScrollArea):
+            area = area.parentWidget()
+        if area is not None:
+            QApplication.sendEvent(area.verticalScrollBar(), e)
+        else:
+            e.ignore()
 
     def _button_item(self, e) -> QListWidgetItem | None:
         pos = e.position().toPoint()
@@ -154,7 +181,7 @@ class CardGrid(QListWidget):
 
 
 class GettingStarted(QFrame):
-    """Primeros pasos: se marcan solos según el estado real de la app."""
+    """Primeros pasos en cuatro columnas: se marcan solos según el estado real de la app."""
 
     use_folder = Signal()
     change_folder = Signal()
@@ -164,12 +191,14 @@ class GettingStarted(QFrame):
     hide_requested = Signal()
 
     KEYS = ("folder", "browser", "song", "import")
+    ICONS = {"folder": "folder-music-outline", "browser": "web", "song": "music-note-outline",
+             "import": "tray-arrow-down"}
 
     def __init__(self):
         super().__init__(objectName="panel")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(20, 14, 16, 14)
-        lay.setSpacing(6)
+        lay.setContentsMargins(24, 22, 24, 24)
+        lay.setSpacing(18)
         head = QHBoxLayout()
         head.addWidget(QLabel(tr("Getting started"), objectName="h2"))
         self.progress = QLabel(objectName="muted")
@@ -181,56 +210,107 @@ class GettingStarted(QFrame):
         head.addWidget(hide)
         lay.addLayout(head)
 
-        self.rows: dict[str, tuple] = {}
+        # 4 columnas si hay sitio; si no, cuadrícula de 2×2 (ver resizeEvent)
+        self.grid = QGridLayout()
+        self.grid.setHorizontalSpacing(14)
+        self.grid.setVerticalSpacing(14)
+        self._ncols = 0
+        self.cards: dict[str, tuple] = {}
         for key in self.KEYS:
-            row = QHBoxLayout()
-            row.setSpacing(10)
-            mark = QLabel()
-            mark.setFixedSize(22, 22)
-            text = QVBoxLayout()
-            text.setSpacing(0)
-            title = QLabel()
-            title.setFont(style.font(14, QFont.DemiBold))
-            sub = QLabel(objectName="small")
-            sub.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # rutas largas: se cortan
-            text.addWidget(title)
-            text.addWidget(sub)
-            row.addWidget(mark)
-            row.addLayout(text, 1)
-            lay.addLayout(row)
-            self.rows[key] = (mark, title, sub, row, [])
+            card = QFrame(objectName="guidecard")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(18, 18, 18, 18)
+            cl.setSpacing(8)
+            icon = QLabel(objectName="guideicon", alignment=Qt.AlignCenter)
+            icon.setFixedSize(44, 44)
+            cl.addWidget(icon)
+            cl.addSpacing(4)
+            title = QLabel(wordWrap=True)
+            title.setFont(style.font(15, QFont.DemiBold))
+            sub = QLabel(objectName="small", wordWrap=True)
+            cl.addWidget(title)
+            cl.addWidget(sub)
+            cl.addStretch(1)
+            buttons = QVBoxLayout()
+            buttons.setSpacing(8)
+            cl.addSpacing(6)
+            cl.addLayout(buttons)
+            self.cards[key] = (card, icon, title, sub, buttons, [])
+        lay.addLayout(self.grid)
+        self._arrange(4)
+        # la altura depende del ancho (textos que saltan de línea): que el layout padre lo tenga en cuenta
+        pol = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        pol.setHeightForWidth(True)
+        self.setSizePolicy(pol)
         self._button("folder", tr("Use this folder"), "primary", self.use_folder, until_done=True)
         self._button("folder", tr("Change…"), "", self.change_folder, until_done=False)
         self._button("browser", tr("Choose"), "", self.choose_browser)
         self._button("song", tr("Try a sample song"), "", self.try_sample)
         self._button("import", tr("Import"), "accent", self.open_import)
 
+    WIDE = 900      # ancho a partir del cual caben las 4 columnas
+
+    def _arrange(self, ncols: int):
+        if ncols == self._ncols:
+            return
+        self._ncols = ncols
+        for key in self.KEYS:
+            self.grid.removeWidget(self.cards[key][0])
+        for i, key in enumerate(self.KEYS):
+            self.grid.addWidget(self.cards[key][0], i // ncols, i % ncols)
+        for c in range(4):
+            self.grid.setColumnStretch(c, 1 if c < ncols else 0)
+
+    def resizeEvent(self, e):
+        self._arrange(4 if e.size().width() >= self.WIDE else 2)
+        super().resizeEvent(e)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        self._arrange(4 if width >= self.WIDE else 2)
+        return self.layout().totalHeightForWidth(width)
+
     def _button(self, key, text, obj, signal, until_done=True):
         b = QPushButton(text, objectName=obj)
         b.setCursor(Qt.PointingHandCursor)
         b.clicked.connect(signal)
-        mark, title, sub, row, buttons = self.rows[key]
-        row.addWidget(b)
-        buttons.append((b, until_done))
+        card, icon, title, sub, buttons, items = self.cards[key]
+        buttons.addWidget(b)
+        items.append((b, until_done))
+
+    @staticmethod
+    def _short(path: str) -> str:
+        """Ruta corta para una columna estrecha: ~/… o las dos últimas carpetas."""
+        home = os.path.expanduser("~")
+        if path.startswith(home):
+            path = "~" + path[len(home):]
+        parts = path.replace("\\", "/").rstrip("/").split("/")
+        return path if len(path) <= 28 else "…/" + "/".join(parts[-2:])
 
     def set_state(self, folder: str, done: dict[str, bool]):
-        home = os.path.expanduser("~")
-        shown = "~" + folder[len(home):] if folder.startswith(home) else folder
         texts = {
-            "folder": (tr("Music folder") if done["folder"] else tr("Choose where to save your music"), shown),
+            "folder": (tr("Music folder") if done["folder"] else tr("Choose where to save your music"),
+                       self._short(folder)),
             "browser": (tr("Connect your browser"), tr("Optional: Premium quality and your private playlists.")),
             "song": (tr("Download your first song"), tr("Paste any YouTube Music link, or try a free sample song.")),
             "import": (tr("Import your playlists"), tr("Your playlists, Liked Music and saved albums.")),
         }
         for key in self.KEYS:
-            mark, title, sub, row, buttons = self.rows[key]
+            card, icon, title, sub, buttons, items = self.cards[key]
             ok = done[key]
-            name, color = ("check-circle", "#3ec46d") if ok else ("circle-outline", style.MUTED)
-            mark.setPixmap(style.icon(name, color).pixmap(22, 22))
+            name, color = ("check", "#3ec46d") if ok else (self.ICONS[key], style.TEXT)
+            icon.setPixmap(style.icon(name, color).pixmap(24, 24))
+            icon.setProperty("done", ok)
+            icon.style().unpolish(icon)
+            icon.style().polish(icon)
             title.setText(texts[key][0])
             title.setStyleSheet(f"color: {style.MUTED};" if ok else "")
             sub.setText(texts[key][1])
-            for b, until_done in buttons:
+            if key == "folder":
+                sub.setToolTip(folder)
+            for b, until_done in items:
                 b.setVisible(not (ok and until_done))
         n = sum(done.values())
         self.progress.setText("  " + tr("{done} of {total}", done=n, total=len(self.KEYS)))
@@ -268,23 +348,31 @@ class HomePage(QWidget):
         self._commands: list[str] = []
         lay.addWidget(self.warn)
 
-        self.guide = GettingStarted()
-        lay.addWidget(self.guide)
-
-        self.stack = QStackedWidget()
-        self.stack.addWidget(self._build_welcome())
-        self.stack.addWidget(self._build_library(covers))
-        lay.addWidget(self.stack, 1)
-
-    # ------------------------------------------------------------ bienvenida (biblioteca vacía)
-    def _build_welcome(self) -> QWidget:
+        # Toda la página se desplaza junta (como YT Music): la guía, la bienvenida o la biblioteca.
+        # Así nada se aplasta, sea cual sea el tamaño de la ventana.
         area = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+        area.verticalScrollBar().setSingleStep(30)
         body = QWidget()
         area.setWidget(body)
         col = QVBoxLayout(body)
-        col.setContentsMargins(0, 0, 6, 20)
+        col.setContentsMargins(0, 0, 8, 20)
+        col.setSpacing(16)
+        self.guide = GettingStarted()
+        self.welcome = self._build_welcome()
+        self.library = self._build_library(covers)
+        col.addWidget(self.guide)
+        col.addWidget(self.welcome)
+        col.addWidget(self.library)
+        col.addStretch(1)
+        lay.addWidget(area, 1)
+
+    # ------------------------------------------------------------ bienvenida (biblioteca vacía)
+    def _build_welcome(self) -> QWidget:
+        page = QWidget()
+        col = QVBoxLayout(page)
+        col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(16)
 
         hero = QFrame(objectName="hero")
@@ -339,8 +427,7 @@ class HomePage(QWidget):
         col.addLayout(steps)
         credit = QLabel(tr("Sample song: {credit}", credit=SAMPLE_CREDIT), objectName="small", wordWrap=True)
         col.addWidget(credit)
-        col.addStretch(1)
-        return area
+        return page
 
     def _download(self):
         text = self.url.text().strip()
@@ -387,7 +474,7 @@ class HomePage(QWidget):
         self.grid.setItemDelegate(CardDelegate(covers, self.grid))
         self.grid.setGridSize(QSize(CardDelegate.COVER + 28, CardDelegate.COVER + 84))
         self.grid.itemClicked.connect(lambda it: self.open_collection.emit(it.data(ROLE)))
-        lay.addWidget(self.grid, 1)
+        lay.addWidget(self.grid)
         return page
 
     def set_collections(self, cols: list[library.Collection]):
@@ -396,7 +483,8 @@ class HomePage(QWidget):
             it = QListWidgetItem()
             it.setData(ROLE, c)
             self.grid.addItem(it)
-        self.stack.setCurrentIndex(1 if cols else 0)    # vacía: bienvenida
+        self.welcome.setVisible(not cols)               # vacía: bienvenida
+        self.library.setVisible(bool(cols))
         self.apply_filter()
 
     def set_missing(self, tools: list):
@@ -426,6 +514,7 @@ class HomePage(QWidget):
             hay = f"{c.title} {c.artist} " + " ".join(t.artist for t in c.tracks[:50])
             hide = (self.kind_filter and c.kind != self.kind_filter) or (q and q not in hay.lower())
             self.grid.item(i).setHidden(bool(hide))
+        self.grid.fit_height()
 
 
 # ------------------------------------------------------------------ Colección
