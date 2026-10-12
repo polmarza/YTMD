@@ -18,7 +18,9 @@ from ytmd.i18n import tr, trn
 from ytmd.onboarding import SAMPLE_CREDIT
 from ytmd.ui import style
 from ytmd.ui.covers import Covers
-from ytmd.ui.widgets import LEAD_W, LEAD_X, ROLE, CardDelegate, QueueRow, TrackDelegate, fmt_long, icon_button
+from ytmd.ui.widgets import (
+    LEAD_W, LEAD_X, QUEUE_MIME, ROLE, CardDelegate, QueueRow, TrackDelegate, fmt_long, icon_button,
+)
 
 
 def search_box(placeholder: str) -> QLineEdit:
@@ -631,11 +633,66 @@ class CollectionPage(QWidget):
 
 
 # ------------------------------------------------------------------ Descargas
+class QueueBox(QWidget):
+    """Lista de la cola: acepta filas soltadas y marca con una línea dónde quedarán."""
+
+    dropped = Signal(object, int)       # (fila, posición entre las filas)
+
+    def __init__(self):
+        super().__init__()
+        self.setAcceptDrops(True)
+        self.line = QFrame(self, objectName="dropline")
+        self.line.hide()
+
+    def rows(self) -> list[QueueRow]:
+        lay = self.layout()
+        return [lay.itemAt(i).widget() for i in range(lay.count())
+                if isinstance(lay.itemAt(i).widget(), QueueRow)]
+
+    def _index_at(self, y: float) -> int:
+        self.layout().activate()            # posiciones al día aunque se acabe de reordenar
+        rows = self.rows()
+        for i, row in enumerate(rows):
+            if y < row.geometry().center().y():
+                return i
+        return len(rows)
+
+    def _show_line(self, index: int):
+        rows = self.rows()
+        if not rows:
+            return
+        gap = self.layout().spacing() / 2
+        y = rows[index].geometry().top() - gap if index < len(rows) else rows[-1].geometry().bottom() + gap
+        self.line.setGeometry(0, int(y) - 1, self.width() - 6, 3)
+        self.line.show()
+        self.line.raise_()
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasFormat(QUEUE_MIME):
+            e.acceptProposedAction()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasFormat(QUEUE_MIME):
+            self._show_line(self._index_at(e.position().y()))
+            e.acceptProposedAction()
+
+    def dragLeaveEvent(self, e):
+        self.line.hide()
+
+    def dropEvent(self, e):
+        self.line.hide()
+        row = QueueRow.dragging
+        if row is not None and e.mimeData().hasFormat(QUEUE_MIME):
+            self.dropped.emit(row, self._index_at(e.position().y()))
+            e.acceptProposedAction()
+
+
 class DownloadsPage(QWidget):
     """Dos mitades: la cola a la izquierda y el formulario para añadir enlaces a la derecha."""
 
     enqueue = Signal(list)             # lista de URLs
     import_requested = Signal()
+    queue_moved = Signal(object, int)  # (fila, nueva posición)
     pause_toggled = Signal(bool)
     clear_finished = Signal()
     choose_dir = Signal()
@@ -697,7 +754,8 @@ class DownloadsPage(QWidget):
         area = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
-        box = QWidget()
+        box = QueueBox()
+        box.dropped.connect(self.queue_moved)
         area.setWidget(box)
         self.queue_box = QVBoxLayout(box)
         self.queue_box.setContentsMargins(0, 0, 6, 0)
@@ -830,6 +888,13 @@ class DownloadsPage(QWidget):
         self.queue_empty.hide()
         self.queue_box.insertWidget(self.queue_box.count() - 1, row)   # antes del espacio final
         self._rows += 1
+
+    def order_rows(self, rows: list[QueueRow]):
+        """Coloca las filas en este orden (debajo del aviso de cola vacía, encima del espacio final)."""
+        for row in rows:
+            self.queue_box.removeWidget(row)
+        for i, row in enumerate(rows, 1):
+            self.queue_box.insertWidget(i, row)
 
     def remove_row(self, row: QueueRow):
         self.queue_box.removeWidget(row)

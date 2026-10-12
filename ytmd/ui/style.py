@@ -156,6 +156,7 @@ QHeaderView::section {{ background: transparent; color: {MUTED}; border: none;
 /* ---- tarjetas y cola ---- */
 #panel {{ background: rgba(255,255,255,0.05); border-radius: 12px; }}
 #queuerow {{ background: rgba(255,255,255,0.05); border-radius: 10px; }}
+#dropline {{ background: {ACCENT}; border-radius: 1px; }}
 QProgressBar {{ background: rgba(255,255,255,0.12); border: none; border-radius: 2px; max-height: 4px; }}
 QProgressBar::chunk {{ background: {ACCENT}; border-radius: 2px; }}
 

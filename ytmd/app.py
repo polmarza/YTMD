@@ -140,6 +140,7 @@ class MainWindow(QMainWindow):
         self.running: Job | None = None
         self.queue_paused = False
         self._pausing = False        # se pidió pausar con una lista a medias: vuelve a la cola al parar
+        self._countdown: Job | None = None   # la que muestra «Empieza en N s»
         self.wait_left = 0
         self.wait_timer = QTimer(self, interval=1000)
         self.wait_timer.timeout.connect(self._tick_wait)
@@ -208,6 +209,7 @@ class MainWindow(QMainWindow):
         self.colpage.tracks.toggle_requested.connect(self.toggle_play)
         self.downloads.enqueue.connect(self.enqueue)
         self.downloads.import_requested.connect(self.import_from_account)
+        self.downloads.queue_moved.connect(self._drop_job)
         sp = self.settings_page
         sp.check_updates.connect(lambda: self.check_updates(manual=True))
         sp.apply_update.connect(self.apply_update)
@@ -689,6 +691,7 @@ class MainWindow(QMainWindow):
         job = Job(url, opts, row)
         row.remove.connect(lambda j=job: self._remove_job(j))
         row.retry.connect(lambda j=job: self._retry_job(j))
+        row.move_requested.connect(lambda where, j=job: self._move_job(j, where))
         self.jobs.append(job)
         self.downloads.add_row(row)
         self._refresh_queue_label()
@@ -704,6 +707,44 @@ class MainWindow(QMainWindow):
         self.jobs.remove(job)
         self.downloads.remove_row(job.row)
         self._refresh_queue_label()
+        self._save_queue()
+
+    # ------------------------------------------------------------ reordenar la cola
+    def _drop_job(self, row: QueueRow, index: int):
+        """Fila soltada en la posición `index` de la lista (arrastrar y soltar)."""
+        job = next((j for j in self.jobs if j.row is row), None)
+        if job is None or job.state != "pending":
+            return
+        old = self.jobs.index(job)
+        if index > old:
+            index -= 1               # al sacarla, las de detrás suben un puesto
+        if index != old:
+            self.jobs.insert(index, self.jobs.pop(old))
+            self._apply_order()
+
+    def _move_job(self, job: Job, where: str):
+        """Menú de la fila: subir/bajar entre las que esperan, o al principio/final."""
+        if job.state != "pending":
+            return
+        pending = self._pending()
+        i = pending.index(job)
+        if where == "top" and i > 0:
+            target = self.jobs.index(pending[0])
+        elif where == "up" and i > 0:
+            target = self.jobs.index(pending[i - 1])
+        elif where == "down" and i < len(pending) - 1:
+            target = self.jobs.index(pending[i + 1])
+        elif where == "bottom" and i < len(pending) - 1:
+            target = len(self.jobs) - 1
+        else:
+            return
+        self.jobs.insert(target, self.jobs.pop(self.jobs.index(job)))
+        self._apply_order()
+
+    def _apply_order(self):
+        self.downloads.order_rows([j.row for j in self.jobs])
+        if self.wait_timer.isActive():         # la cuenta atrás pasa a la que ahora va primera
+            self._tick_wait(first=True)
         self._save_queue()
 
     def _retry_job(self, job: Job):
@@ -853,6 +894,9 @@ class MainWindow(QMainWindow):
                 nxt[0].row.set_state("pending", tr("Queued"))
             self._pump()
             return
+        if self._countdown and self._countdown is not nxt[0] and self._countdown.state == "pending":
+            self._countdown.row.set_state("pending", tr("Queued"))
+        self._countdown = nxt[0]
         nxt[0].row.set_state("pending", tr("Starts in {secs} s (anti-block pause)", secs=self.wait_left))
 
     def _save_queue(self):

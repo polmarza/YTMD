@@ -293,4 +293,10 @@ TEXTS = {
     "Pausing after the current song…": "Pausando al terminar la canción en curso…",
     "Paused · {n} downloaded. It will continue where it left off.":
         "En pausa · {n} descargadas. Seguirá donde se quedó.",
+    # --- reordenar la cola
+    "Drag to reorder": "Arrastra para reordenar",
+    "Move to top": "Mover al principio",
+    "Move up": "Subir",
+    "Move down": "Bajar",
+    "Move to bottom": "Mover al final",
 }

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath
+from PySide6.QtCore import QEvent, QMimeData, QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSlider, QStyle,
+    QApplication, QFrame, QHBoxLayout, QLabel, QMenu, QProgressBar, QPushButton, QSlider, QStyle,
     QStyledItemDelegate, QVBoxLayout,
 )
 
@@ -409,9 +409,18 @@ class PlayerBar(QFrame):
 
 
 # ------------------------------------------------------------------ fila de la cola
+QUEUE_MIME = "application/x-ytmd-queue-row"
+
+
 class QueueRow(QFrame):
+    """Una descarga de la cola. Las que están en espera se pueden reordenar: arrastrando desde el asa
+    de la izquierda o con el menú del clic derecho."""
+
     remove = Signal()
     retry = Signal()
+    move_requested = Signal(str)        # top | up | down | bottom
+
+    dragging: "QueueRow | None" = None  # la fila que se está arrastrando ahora mismo
 
     @staticmethod
     def kind_tag(kind: str) -> str:
@@ -420,8 +429,14 @@ class QueueRow(QFrame):
     def __init__(self, url: str):
         super().__init__(objectName="queuerow")
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(14, 10, 8, 10)
-        lay.setSpacing(12)
+        lay.setContentsMargins(6, 10, 8, 10)
+        lay.setSpacing(10)
+        self.handle = QLabel()
+        self.handle.setFixedSize(18, 26)
+        self.handle.setToolTip(tr("Drag to reorder"))
+        lay.addWidget(self.handle)
+        self.movable = False
+        self._press = None
         self.state_icon = QLabel()
         self.state_icon.setFixedSize(22, 22)
         lay.addWidget(self.state_icon)
@@ -460,9 +475,62 @@ class QueueRow(QFrame):
         self.state_icon.setPixmap(style.icon(name, color).pixmap(22, 22))
         self.btn_retry.setVisible(state in ("error", "cancelled", "done"))
         self.bar.setVisible(state == "running")
+        # solo se reordena lo que aún no ha empezado (en espera o en pausa)
+        self.movable = state == "pending"
+        self.handle.setPixmap(style.icon("drag-vertical", style.MUTED).pixmap(18, 22) if self.movable else QPixmap())
+        self.handle.setCursor(Qt.OpenHandCursor if self.movable else Qt.ArrowCursor)
         if text is not None:
             self.status.setText(text)
 
     def set_info(self, title: str, kind: str):
         self.title.setText(title)
         self.tag.setText(self.kind_tag(kind))
+
+    # ------------------------------------------------------------ arrastrar
+    def mousePressEvent(self, e):
+        if self.movable and e.button() == Qt.LeftButton and self.handle.geometry().contains(e.position().toPoint()):
+            self._press = e.position().toPoint()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._press is not None and \
+                (e.position().toPoint() - self._press).manhattanLength() >= QApplication.startDragDistance():
+            self._start_drag()
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._press = None
+        super().mouseReleaseEvent(e)
+
+    def _start_drag(self):
+        mime = QMimeData()
+        mime.setData(QUEUE_MIME, b"row")
+        shot = self.grab()
+        ghost = QPixmap(shot.size())
+        ghost.setDevicePixelRatio(shot.devicePixelRatio())
+        ghost.fill(Qt.transparent)
+        p = QPainter(ghost)
+        p.setOpacity(0.85)
+        p.drawPixmap(0, 0, shot)
+        p.end()
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.setPixmap(ghost)
+        drag.setHotSpot(self._press)
+        QueueRow.dragging = self
+        self._press = None
+        try:
+            drag.exec(Qt.MoveAction)
+        finally:
+            QueueRow.dragging = None
+
+    # ------------------------------------------------------------ menú
+    def contextMenuEvent(self, e):
+        if not self.movable:
+            return
+        m = QMenu(self)
+        for where, text, ic in (("top", tr("Move to top"), "arrow-collapse-up"), ("up", tr("Move up"), "arrow-up"),
+                                ("down", tr("Move down"), "arrow-down"),
+                                ("bottom", tr("Move to bottom"), "arrow-collapse-down")):
+            m.addAction(style.icon(ic), text, lambda w=where: self.move_requested.emit(w))
+        m.exec(e.globalPos())
