@@ -12,8 +12,10 @@ from dataclasses import asdict, dataclass, fields
 
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg*=false")
 
-from PySide6.QtCore import QObject, QProcess, QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
+from PySide6.QtCore import (
+    QLibraryInfo, QObject, QProcess, QSettings, QSize, Qt, QThread, QTimer, QTranslator, QUrl, Signal, Slot,
+)
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QLabel, QListWidget,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 
 import i18n
 import library
+import onboarding
 import updater
 from downloader import (
     DEFAULT_FORMAT, DEFAULT_PAUSE, NO_BROWSER, PAUSES, Callbacks, Downloader, Options, Result, migrate,
@@ -114,6 +117,9 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 640)
         self.settings = QSettings("polmarza", PROFILE)
         self.covers = Covers(self.devicePixelRatioF() or 2.0)
+        pal = QApplication.instance().palette()          # enlaces de texto en el rojo de la app
+        pal.setColor(QPalette.Link, QColor(style.ACCENT))
+        QApplication.instance().setPalette(pal)
         self.collections: list[library.Collection] = []
         self.all_col: library.Collection | None = None
 
@@ -147,6 +153,7 @@ class MainWindow(QMainWindow):
         self.rescan()
         self._restore_queue()
         self.settings_page.set_versions(__version__, updater.ytdlp_version())
+        self._check_tools()
         QTimer.singleShot(3000, self.check_updates)      # sin molestar al arrancar
 
     # ------------------------------------------------------------ construcción
@@ -181,6 +188,17 @@ class MainWindow(QMainWindow):
         # señales de las páginas
         self.home.open_collection.connect(self.open_collection)
         self.home.play_collection.connect(self.play_collection)
+        self.home.download_url.connect(self.download_from_home)
+        self.home.import_requested.connect(self.import_from_account)
+        self.home.sample_requested.connect(self.download_sample)
+        self.home.recheck_requested.connect(self._check_tools)
+        g = self.home.guide
+        g.use_folder.connect(self.confirm_folder)
+        g.change_folder.connect(self.choose_dir)
+        g.choose_browser.connect(self.choose_browser)
+        g.try_sample.connect(self.download_sample)
+        g.open_import.connect(self.import_from_account)
+        g.hide_requested.connect(self.hide_guide)
         self.colpage.play_requested.connect(self.play_list)
         self.colpage.shuffle_requested.connect(self.play_shuffled)
         self.colpage.kind_changed.connect(self.change_kind)
@@ -195,6 +213,8 @@ class MainWindow(QMainWindow):
         sp.update_ytdlp.connect(self.update_ytdlp)
         sp.language_selected.connect(self.change_language)
         sp.restart_requested.connect(self.restart)
+        sp.show_guide.connect(self.show_guide)
+        self.downloads.cmb_browser.currentIndexChanged.connect(lambda _i: self._refresh_guide())
         self.downloads.pause_toggled.connect(self._set_queue_paused)
         self.downloads.clear_finished.connect(self.clear_finished)
         self.downloads.choose_dir.connect(self.choose_dir)
@@ -324,6 +344,7 @@ class MainWindow(QMainWindow):
             it.setData(ROLE, c)
             self.side_list.addItem(it)
         self.all_col = library.all_songs(cols, self.out_dir)
+        self._refresh_guide()
         self.colpage.tracks.set_playing(self.current_path(), self._is_playing())
         if self.stack.currentWidget() is self.colpage and self.colpage.col:
             shown = self.colpage.col
@@ -352,6 +373,12 @@ class MainWindow(QMainWindow):
     def _load_settings(self):
         s = self.settings
         d = self.downloads
+        # Primera vez = sin carpeta guardada: se pregunta dónde guardar la música y se enseña la guía.
+        # Quien ya usaba la app no necesita la guía.
+        first_run = not s.contains("out_dir")
+        self.folder_confirmed = s.value("folder_confirmed", not first_run, type=bool)
+        if not first_run and not s.contains("guide_hidden"):
+            s.setValue("guide_hidden", True)
         self.out_dir = s.value("out_dir", DEFAULT_DIR)
         d.set_dir(self.out_dir)
         # los ajustes de versiones anteriores guardaban el texto en español: migrate() lo convierte
@@ -375,6 +402,7 @@ class MainWindow(QMainWindow):
         s = self.settings
         d = self.downloads
         s.setValue("out_dir", self.out_dir)
+        s.setValue("folder_confirmed", self.folder_confirmed)
         s.setValue("format", d.cmb_format.currentData())
         s.setValue("browser", d.cmb_browser.currentData())
         s.setValue("pause", d.cmb_pause.currentData())
@@ -400,6 +428,9 @@ class MainWindow(QMainWindow):
         if d:
             self.out_dir = d
             self.downloads.set_dir(d)
+            self.folder_confirmed = True
+            self.settings.setValue("folder_confirmed", True)
+            self.settings.setValue("out_dir", d)
             self.rescan()
 
     def closeEvent(self, e):
@@ -550,6 +581,78 @@ class MainWindow(QMainWindow):
         relaunch()
         QApplication.quit()
 
+    # ------------------------------------------------------------ primeros pasos
+    def _check_tools(self):
+        self.home.set_missing(onboarding.missing_tools())
+
+    def _refresh_guide(self):
+        if not hasattr(self, "folder_confirmed"):
+            return                       # aún construyendo la ventana
+        done = {
+            "folder": self.folder_confirmed,
+            "browser": self.downloads.cmb_browser.currentData() != NO_BROWSER,
+            "song": any(c.tracks for c in self.collections),
+            "import": self.settings.value("imported", False, type=bool),
+        }
+        hidden = self.settings.value("guide_hidden", False, type=bool) or all(done.values())
+        self.home.guide.setVisible(not hidden)
+        if not hidden:
+            self.home.guide.set_state(self.out_dir, done)
+
+    def confirm_folder(self):
+        os.makedirs(self.out_dir, exist_ok=True)
+        self.folder_confirmed = True
+        self.settings.setValue("folder_confirmed", True)
+        self.settings.setValue("out_dir", self.out_dir)
+        self._refresh_guide()
+
+    def ensure_folder(self) -> bool:
+        """La primera vez, antes de descargar nada, pregunta dónde guardar la música."""
+        if self.folder_confirmed:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("Where should your music go?"))
+        box.setText(tr("Choose the folder where your music will be saved."))
+        box.setInformativeText(tr("Suggested: {path}", path=self.out_dir))
+        use = box.addButton(tr("Use this folder"), QMessageBox.AcceptRole)
+        other = box.addButton(tr("Choose another…"), QMessageBox.ActionRole)
+        box.addButton(tr("Cancel"), QMessageBox.RejectRole)
+        box.setDefaultButton(use)
+        box.exec()
+        if box.clickedButton() is use:
+            self.confirm_folder()
+        elif box.clickedButton() is other:
+            self.choose_dir()
+        return self.folder_confirmed
+
+    def choose_browser(self):
+        self.go("downloads")
+        self.downloads.cmb_browser.setFocus()
+        self.downloads.cmb_browser.showPopup()
+
+    def download_from_home(self, url: str):
+        if "youtube.com" not in url and "youtu.be" not in url:
+            QMessageBox.information(self, tr("That's not a YouTube Music link"),
+                                    tr("Paste a link from music.youtube.com: a song, an album or a playlist."))
+            return
+        if self.enqueue([url]):
+            self.home.url.clear()
+            self.go("downloads")
+
+    def download_sample(self):
+        if self.enqueue([onboarding.SAMPLE_URL]):
+            self.downloads.add_log(tr("Sample song: {credit}", credit=onboarding.SAMPLE_CREDIT))
+            self.go("downloads")
+
+    def hide_guide(self):
+        self.settings.setValue("guide_hidden", True)
+        self._refresh_guide()
+
+    def show_guide(self):
+        self.settings.setValue("guide_hidden", False)
+        self._refresh_guide()
+        self.go("home")
+
     # ------------------------------------------------------------ importar
     def import_from_account(self):
         browser = self.downloads.cmb_browser.currentData()
@@ -560,6 +663,8 @@ class MainWindow(QMainWindow):
                    "YouTube Music (for example, chrome) and press Import again."))
             self.downloads.cmb_browser.setFocus()
             return
+        self.settings.setValue("imported", True)
+        self._refresh_guide()
         if not self.downloads.chk_skip.isChecked():
             self.downloads.chk_skip.setChecked(True)    # sin esto no se evitan los duplicados
             self.downloads.add_log(tr("«Skip already downloaded» turned on so songs aren't duplicated."))
@@ -568,12 +673,15 @@ class MainWindow(QMainWindow):
             self.enqueue(dlg.urls)
 
     # ------------------------------------------------------------ cola de descargas
-    def enqueue(self, urls: list[str]):
+    def enqueue(self, urls: list[str]) -> bool:
+        if not self.ensure_folder():
+            return False
         opts = self.current_options()
         for u in urls:
             self._add_job(u, Options(**asdict(opts)))   # cada trabajo guarda sus opciones
         self.downloads.add_log(tr("＋ {n} link(s) added to the queue", n=len(urls)))
         self._pump()
+        return True
 
     def _add_job(self, url: str, opts: Options) -> Job:
         row = QueueRow(url)
@@ -883,6 +991,10 @@ def main():
     i18n.set_language(QSettings("polmarza", PROFILE).value("language", i18n.DEFAULT))
     app = QApplication(sys.argv)
     app.setApplicationName("YT Music Downloader")
+    if i18n.language() != "en":            # botones y diálogos estándar de Qt en el mismo idioma
+        qt_tr = QTranslator(app)
+        if qt_tr.load(f"qtbase_{i18n.language()}", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+            app.installTranslator(qt_tr)
     app.setStyleSheet(style.stylesheet())
     icon = os.path.join(HERE, "icon.png")
     if os.path.isfile(icon):

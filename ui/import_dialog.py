@@ -46,7 +46,7 @@ class ImportDialog(QDialog):
         self.setWindowTitle(tr("Import from YouTube Music"))
         self.resize(820, 680)
         self.urls: list[str] = []
-        self.mb = MB_PER_SONG.get(format_name, 25)
+        self.mb = MB_PER_SONG.get(format_name, 9)
         # para reconocer lo que ya tienes: por id de origen, por enlace o por título
         self.local_by_id = {c.source: c for c in collections if c.source}
         self.local_by_url = {c.url: c for c in collections if c.url}

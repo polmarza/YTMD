@@ -41,7 +41,8 @@ PAUSES: dict[str, tuple[float, float, float]] = {
     "careful": (3, 8, 0.5),
     "safe": (10, 20, 1),
 }
-DEFAULT_FORMAT, DEFAULT_PAUSE = "flac", "careful"
+# MP3 por defecto: es lo que sirve a casi todo el mundo; quien ya tenía otro formato lo conserva
+DEFAULT_FORMAT, DEFAULT_PAUSE = "mp3", "careful"
 
 
 def format_label(fid: str) -> str:

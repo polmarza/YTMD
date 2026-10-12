@@ -142,6 +142,14 @@ QHeaderView::section {{ background: transparent; color: {MUTED}; border: none;
 #banner {{ background: #1f2a44; border-radius: 0; }}
 #banner QLabel {{ color: {TEXT}; }}
 
+/* ---- bienvenida y primeros pasos ---- */
+#hero {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a0f17, stop:0.65 #141414);
+    border: 1px solid #2c2c2c; border-radius: 14px; }}
+#step {{ background: rgba(255,255,255,0.05); border-radius: 12px; }}
+#stepnum {{ color: {ACCENT}; font-weight: 700; font-size: 13px; }}
+#warn {{ background: #2b1e08; border: 1px solid #5a3e10; border-radius: 10px; }}
+#warn QLabel {{ color: #f3c27a; }}
+
 /* ---- tarjetas y cola ---- */
 #panel {{ background: rgba(255,255,255,0.05); border-radius: 12px; }}
 #queuerow {{ background: rgba(255,255,255,0.05); border-radius: 10px; }}

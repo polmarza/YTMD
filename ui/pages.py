@@ -6,15 +6,16 @@ import os
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout,
+    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QListView, QListWidget, QListWidgetItem, QMenu, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 import library
 import i18n
 from downloader import BROWSERS, FORMATS, PAUSES, browser_label, format_label, pause_label
 from i18n import tr, trn
+from onboarding import SAMPLE_CREDIT
 from ui import style
 from ui.covers import Covers
 from ui.widgets import LEAD_W, LEAD_X, ROLE, CardDelegate, QueueRow, TrackDelegate, fmt_long, icon_button
@@ -152,15 +153,205 @@ class CardGrid(QListWidget):
         super().mouseReleaseEvent(e)
 
 
+class GettingStarted(QFrame):
+    """Primeros pasos: se marcan solos según el estado real de la app."""
+
+    use_folder = Signal()
+    change_folder = Signal()
+    choose_browser = Signal()
+    try_sample = Signal()
+    open_import = Signal()
+    hide_requested = Signal()
+
+    KEYS = ("folder", "browser", "song", "import")
+
+    def __init__(self):
+        super().__init__(objectName="panel")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 14, 16, 14)
+        lay.setSpacing(6)
+        head = QHBoxLayout()
+        head.addWidget(QLabel(tr("Getting started"), objectName="h2"))
+        self.progress = QLabel(objectName="muted")
+        head.addWidget(self.progress, 0, Qt.AlignBottom)
+        head.addStretch(1)
+        hide = QPushButton(tr("Hide"))
+        hide.setToolTip(tr("You can show it again from Settings"))
+        hide.clicked.connect(self.hide_requested)
+        head.addWidget(hide)
+        lay.addLayout(head)
+
+        self.rows: dict[str, tuple] = {}
+        for key in self.KEYS:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            mark = QLabel()
+            mark.setFixedSize(22, 22)
+            text = QVBoxLayout()
+            text.setSpacing(0)
+            title = QLabel()
+            title.setFont(style.font(14, QFont.DemiBold))
+            sub = QLabel(objectName="small")
+            sub.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # rutas largas: se cortan
+            text.addWidget(title)
+            text.addWidget(sub)
+            row.addWidget(mark)
+            row.addLayout(text, 1)
+            lay.addLayout(row)
+            self.rows[key] = (mark, title, sub, row, [])
+        self._button("folder", tr("Use this folder"), "primary", self.use_folder, until_done=True)
+        self._button("folder", tr("Change…"), "", self.change_folder, until_done=False)
+        self._button("browser", tr("Choose"), "", self.choose_browser)
+        self._button("song", tr("Try a sample song"), "", self.try_sample)
+        self._button("import", tr("Import"), "accent", self.open_import)
+
+    def _button(self, key, text, obj, signal, until_done=True):
+        b = QPushButton(text, objectName=obj)
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(signal)
+        mark, title, sub, row, buttons = self.rows[key]
+        row.addWidget(b)
+        buttons.append((b, until_done))
+
+    def set_state(self, folder: str, done: dict[str, bool]):
+        home = os.path.expanduser("~")
+        shown = "~" + folder[len(home):] if folder.startswith(home) else folder
+        texts = {
+            "folder": (tr("Music folder") if done["folder"] else tr("Choose where to save your music"), shown),
+            "browser": (tr("Connect your browser"), tr("Optional: Premium quality and your private playlists.")),
+            "song": (tr("Download your first song"), tr("Paste any YouTube Music link, or try a free sample song.")),
+            "import": (tr("Import your playlists"), tr("Your playlists, Liked Music and saved albums.")),
+        }
+        for key in self.KEYS:
+            mark, title, sub, row, buttons = self.rows[key]
+            ok = done[key]
+            name, color = ("check-circle", "#3ec46d") if ok else ("circle-outline", style.MUTED)
+            mark.setPixmap(style.icon(name, color).pixmap(22, 22))
+            title.setText(texts[key][0])
+            title.setStyleSheet(f"color: {style.MUTED};" if ok else "")
+            sub.setText(texts[key][1])
+            for b, until_done in buttons:
+                b.setVisible(not (ok and until_done))
+        n = sum(done.values())
+        self.progress.setText("  " + tr("{done} of {total}", done=n, total=len(self.KEYS)))
+
+
 class HomePage(QWidget):
     open_collection = Signal(object)
     play_collection = Signal(object)
+    download_url = Signal(str)
+    import_requested = Signal()
+    sample_requested = Signal()
+    recheck_requested = Signal()
 
     def __init__(self, covers: Covers):
         super().__init__()
         self.kind_filter = None
         lay = QVBoxLayout(self)
         lay.setContentsMargins(40, 20, 28, 0)
+        lay.setSpacing(16)
+
+        # aviso: falta algún programa que necesitan las descargas
+        self.warn = QFrame(objectName="warn")
+        wl = QHBoxLayout(self.warn)
+        wl.setContentsMargins(14, 10, 10, 10)
+        self.warn_label = QLabel(wordWrap=True)
+        self.warn_label.setTextFormat(Qt.RichText)
+        wl.addWidget(self.warn_label, 1)
+        self.btn_copy = QPushButton(tr("Copy command"))
+        self.btn_copy.clicked.connect(self._copy_commands)
+        recheck = QPushButton(tr("Check again"))
+        recheck.clicked.connect(self.recheck_requested)
+        wl.addWidget(self.btn_copy)
+        wl.addWidget(recheck)
+        self.warn.hide()
+        self._commands: list[str] = []
+        lay.addWidget(self.warn)
+
+        self.guide = GettingStarted()
+        lay.addWidget(self.guide)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._build_welcome())
+        self.stack.addWidget(self._build_library(covers))
+        lay.addWidget(self.stack, 1)
+
+    # ------------------------------------------------------------ bienvenida (biblioteca vacía)
+    def _build_welcome(self) -> QWidget:
+        area = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+        body = QWidget()
+        area.setWidget(body)
+        col = QVBoxLayout(body)
+        col.setContentsMargins(0, 0, 6, 20)
+        col.setSpacing(16)
+
+        hero = QFrame(objectName="hero")
+        hl = QVBoxLayout(hero)
+        hl.setContentsMargins(26, 24, 26, 24)
+        hl.setSpacing(12)
+        hl.addWidget(QLabel(tr("Start your music library"), objectName="h1"))
+        intro = QLabel(tr("Download songs, albums and playlists from YouTube Music and listen to them "
+                          "offline, here or on any player."), objectName="muted", wordWrap=True)
+        hl.addWidget(intro)
+        row = QHBoxLayout()
+        self.url = QLineEdit(placeholderText=tr("Paste a YouTube Music link…"))
+        self.url.returnPressed.connect(self._download)
+        go = QPushButton(tr("Download"), objectName="primary")
+        go.setCursor(Qt.PointingHandCursor)
+        go.clicked.connect(self._download)
+        row.addWidget(self.url, 1)
+        row.addWidget(go)
+        hl.addLayout(row)
+        hl.addWidget(QLabel(tr("or"), objectName="small"))
+        row = QHBoxLayout()
+        imp = QPushButton("  " + tr("Import from YouTube Music"), objectName="accent")
+        imp.setIcon(style.icon("account-music"))
+        imp.setCursor(Qt.PointingHandCursor)
+        imp.clicked.connect(self.import_requested)
+        row.addWidget(imp)
+        row.addWidget(QLabel(tr("your playlists and saved albums"), objectName="muted"))
+        row.addStretch(1)
+        hl.addLayout(row)
+        sample = QLabel(tr("No link at hand? <a href=\"sample\">Try a free sample song</a>"), objectName="muted")
+        sample.setTextFormat(Qt.RichText)
+        sample.linkActivated.connect(lambda _l: self.sample_requested.emit())
+        hl.addWidget(sample)
+        col.addWidget(hero)
+
+        steps = QHBoxLayout()
+        steps.setSpacing(12)
+        for n, (title, text) in enumerate((
+                (tr("Paste a link"), tr("A song, an album or a playlist.")),
+                (tr("We download it"), tr("With cover art and tags, as MP3 or FLAC.")),
+                (tr("Play it anywhere"), tr("Here, or copy the folder to your player."))), 1):
+            card = QFrame(objectName="step")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(16, 14, 16, 14)
+            cl.setSpacing(4)
+            cl.addWidget(QLabel(str(n), objectName="stepnum"))
+            t = QLabel(title)
+            t.setFont(style.font(15, QFont.DemiBold))
+            cl.addWidget(t)
+            cl.addWidget(QLabel(text, objectName="muted", wordWrap=True))
+            steps.addWidget(card, 1)
+        col.addLayout(steps)
+        credit = QLabel(tr("Sample song: {credit}", credit=SAMPLE_CREDIT), objectName="small", wordWrap=True)
+        col.addWidget(credit)
+        col.addStretch(1)
+        return area
+
+    def _download(self):
+        text = self.url.text().strip()
+        if text:
+            self.download_url.emit(text)
+
+    # ------------------------------------------------------------ biblioteca
+    def _build_library(self, covers: Covers) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(16)
 
         self.search = search_box(tr("Search your playlists, albums and artists"))
@@ -184,10 +375,6 @@ class HomePage(QWidget):
         lay.addLayout(chips)
 
         lay.addWidget(QLabel(tr("Your library"), objectName="h1"))
-        self.empty = QLabel(tr("Nothing here yet. Go to <b>Downloads</b> and paste a YouTube Music link."),
-                            objectName="muted")
-        lay.addWidget(self.empty)
-
         self.grid = CardGrid()
         self.grid.play_requested.connect(self.play_collection)
         self.grid.setViewMode(QListView.IconMode)
@@ -201,6 +388,7 @@ class HomePage(QWidget):
         self.grid.setGridSize(QSize(CardDelegate.COVER + 28, CardDelegate.COVER + 84))
         self.grid.itemClicked.connect(lambda it: self.open_collection.emit(it.data(ROLE)))
         lay.addWidget(self.grid, 1)
+        return page
 
     def set_collections(self, cols: list[library.Collection]):
         self.grid.clear()
@@ -208,8 +396,24 @@ class HomePage(QWidget):
             it = QListWidgetItem()
             it.setData(ROLE, c)
             self.grid.addItem(it)
-        self.empty.setVisible(not cols)
+        self.stack.setCurrentIndex(1 if cols else 0)    # vacía: bienvenida
         self.apply_filter()
+
+    def set_missing(self, tools: list):
+        """Avisa de los programas que faltan (ffmpeg, Node.js…) con el comando para instalarlos."""
+        self._commands = [t.command for t in tools]
+        if not tools:
+            self.warn.hide()
+            return
+        lines = [tr("<b>{name}</b> is not installed: {why}. Install it with <code>{command}</code>",
+                    name=t.name, why=t.why, command=t.command) for t in tools]
+        self.warn_label.setText("⚠ " + "<br>⚠ ".join(lines))
+        self.btn_copy.setText(tr("Copy commands") if len(tools) > 1 else tr("Copy command"))
+        self.warn.show()
+
+    def _copy_commands(self):
+        QApplication.clipboard().setText("\n".join(self._commands))
+        self.btn_copy.setText(tr("Copied"))
 
     def _set_kind(self, kind):
         self.kind_filter = kind
@@ -550,9 +754,10 @@ class DownloadsPage(QWidget):
 
 # ------------------------------------------------------------------ Configuración
 class SettingsPage(QWidget):
-    """Idioma y actualizaciones (de la app y de yt-dlp)."""
+    """Idioma, primeros pasos y actualizaciones (de la app y de yt-dlp)."""
 
     language_selected = Signal(str)
+    show_guide = Signal()
     check_updates = Signal()
     apply_update = Signal()
     update_ytdlp = Signal()
@@ -574,6 +779,7 @@ class SettingsPage(QWidget):
         col.setContentsMargins(0, 0, 8, 0)
         col.setSpacing(16)
         col.addWidget(self._language_panel())
+        col.addWidget(self._guide_panel())
         col.addWidget(self._updates_panel())
         col.addStretch(1)
         outer.addWidget(area, 1)
@@ -600,6 +806,17 @@ class SettingsPage(QWidget):
         row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(QLabel(tr("The app restarts to apply the change."), objectName="small"))
+        return panel
+
+    def _guide_panel(self) -> QFrame:
+        panel, lay = self._panel(tr("Getting started"))
+        lay.addWidget(QLabel(tr("The first-steps guide on the Home screen."), objectName="small"))
+        row = QHBoxLayout()
+        b = QPushButton(tr("Show the getting started guide"))
+        b.clicked.connect(self.show_guide)
+        row.addWidget(b)
+        row.addStretch(1)
+        lay.addLayout(row)
         return panel
 
     def revert_language(self):

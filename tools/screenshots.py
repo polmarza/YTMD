@@ -120,14 +120,30 @@ def main(library_dir: str, out_dir: str):
     # 6) Configuración, con una versión nueva disponible
     w.go("settings")
     sp = w.settings_page
-    sp.offer_update("v1.1.0", True)
-    sp.set_app_status(i18n.tr("Version {tag} is available.", tag="v1.1.0"))
+    sp.offer_update("v1.2.0", True)
+    sp.set_app_status(i18n.tr("Version {tag} is available.", tag="v1.2.0"))
     shot("settings")
 
     w.player.stop()
+    w.close()
+
+    # 7) Primer arranque: biblioteca vacía, guía de primeros pasos y bienvenida
+    import tempfile
+    empty = tempfile.mkdtemp(prefix="ytmd-empty-")
+    settings.clear()
+    settings.setValue("out_dir", empty)
+    settings.setValue("folder_confirmed", False)
+    settings.setValue("guide_hidden", False)
+    w = ytmd.MainWindow()
+    w.resize(1400, 880)
+    w.show()
+    QTest.qWait(400)
+    done = {"folder": False, "browser": False, "song": False, "import": False}
+    w.home.guide.set_state(os.path.expanduser("~/Music/YT Music"), done)   # ruta genérica en la imagen
+    shot("welcome")
+    w.close()
     settings.clear()
     settings.sync()
-    w.close()
 
 
 if __name__ == "__main__":

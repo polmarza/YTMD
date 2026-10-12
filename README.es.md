@@ -35,6 +35,7 @@ música para un reproductor MP3 hecho a medida (ESP32), aunque sirve para cualqu
 - 🎧 **Alta calidad** — FLAC / WAV / MP3 320 con etiquetas y portada cuadrada; AAC 256 kbps con YouTube Premium.
 - 🧠 **Sin duplicados** — reconoce lo que ya tienes, aunque sea otro vídeo, y lo enlaza.
 - 🛡️ **Respetuosa con YouTube** — pausas aleatorias, reintentos automáticos y una cola que se pausa sola si te frenan.
+- 🚀 **Primer arranque amable** — guía de primeros pasos, canción de ejemplo gratuita y aviso si falta algún programa.
 - 🌍 **Inglés y español** — y actualizaciones de la app y de yt-dlp desde la propia app.
 
 ## Instalar y arrancar
@@ -79,6 +80,20 @@ python -m venv .venv
 
 El entorno `.venv` es propio de cada sistema: si compartes la carpeta entre Mac y Windows, crea
 uno en cada equipo (o usa otro nombre de carpeta para el segundo).
+
+## Primer arranque
+
+<img src="docs/screenshots/welcome.png" alt="Primer arranque: guía de primeros pasos y bienvenida" width="720">
+
+La primera vez que abres la app, el Inicio muestra una guía de **primeros pasos** en lugar de una pantalla vacía:
+
+1. **Elige dónde guardar tu música** (sugerida: `~/Music/YT Music`). También se pregunta antes de la primera descarga.
+2. **Conecta tu navegador** (opcional): calidad Premium y tus listas privadas.
+3. **Descarga tu primera canción**: pega un enlace o prueba la canción de ejemplo gratuita.
+4. **Importa tus listas** desde tu cuenta de YouTube Music.
+
+Los pasos se marcan solos y la guía desaparece al completarlos (o pulsa *Ocultar*; puedes volver a mostrarla
+desde Configuración). Si falta `ffmpeg` o Node.js, un aviso muestra el comando exacto para instalarlos.
 
 ## La app
 
@@ -149,9 +164,9 @@ así viaja con las canciones.
 
 | Formato | Para qué | Portada |
 |---|---|---|
-| **FLAC** | Sin pérdida, etiquetas completas. Recomendado si tu decodificador lo soporta | Incrustada |
+| **MP3 320** *(por defecto)* | Suena en todas partes: móviles, ordenadores, DFPlayer Mini, VS1003/1053… | Incrustada |
+| **FLAC** | Sin pérdida, etiquetas completas. Lo mejor para alta fidelidad o un reproductor casero que lo soporte | Incrustada |
 | **WAV** | PCM puro: lo más fácil en un microcontrolador (directo a un DAC I2S) | `.jpg` aparte |
-| **MP3 320** | Máxima compatibilidad (DFPlayer Mini, VS1003/1053…) | Incrustada |
 | **Original** | El Opus/AAC tal cual lo sirve YouTube, sin tocar | Incrustada |
 
 **Máxima calidad:** YouTube Music ya sirve el audio comprimido (Opus ~130 kbps). Con
@@ -217,6 +232,14 @@ y los derechos de autor de la música. Esta herramienta está pensada para uso p
 que tengas derecho a descargar (tu propia música, licencias libres, copias de seguridad de lo que
 ya posees). Eres el único responsable del uso que hagas de ella. No está afiliada a YouTube ni a
 Google. Se apoya en [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+
+## Créditos
+
+- Canción de ejemplo: «Carefree», de Kevin MacLeod ([incompetech.com](https://incompetech.com)), con licencia
+  [Creative Commons: Reconocimiento 4.0](https://creativecommons.org/licenses/by/4.0/deed.es).
+- Hecha con [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ytmusicapi](https://github.com/sigma67/ytmusicapi),
+  [PySide6](https://doc.qt.io/qtforpython-6/), [mutagen](https://github.com/quodlibet/mutagen) y
+  [QtAwesome](https://github.com/spyder-ide/qtawesome) (iconos Material Design).
 
 ## Licencia
 

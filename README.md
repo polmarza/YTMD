@@ -35,6 +35,7 @@ DIY MP3 player (ESP32), but it works for any offline collection.
 - 🎧 **High quality** — FLAC / WAV / MP3 320 with tags and square cover art; AAC 256 kbps with YouTube Premium.
 - 🧠 **No duplicates** — recognises songs you already have, even from another video, and links them.
 - 🛡️ **Gentle with YouTube** — random pauses, automatic retries and a queue that pauses itself if throttled.
+- 🚀 **Friendly first launch** — a getting-started guide, a free sample song and a check for missing tools.
 - 🌍 **English and Spanish** — and in-app updates for the app and yt-dlp.
 
 ## Install and run
@@ -79,6 +80,20 @@ python -m venv .venv
 
 The `.venv` environment belongs to each system: if you share the folder between a Mac and a Windows
 PC, create one on each machine (or use another folder name for the second).
+
+## First launch
+
+<img src="docs/screenshots/welcome.png" alt="First launch: getting-started guide and welcome screen" width="720">
+
+The first time you open the app, Home shows a **Getting started** guide instead of an empty screen:
+
+1. **Choose where to save your music** (suggested: `~/Music/YT Music`). You're also asked before the first download.
+2. **Connect your browser** (optional): Premium quality and your private playlists.
+3. **Download your first song**: paste a link, or try the free sample song.
+4. **Import your playlists** from your YouTube Music account.
+
+Steps tick themselves as you go, and the guide disappears when they're done (or press *Hide*; it can be shown
+again from Settings). If `ffmpeg` or Node.js are missing, a warning shows the exact command to install them.
 
 ## The app
 
@@ -147,9 +162,9 @@ collection. It's stored in a `.coleccion.json` inside the folder, so it travels 
 
 | Format | What it's for | Cover art |
 |---|---|---|
-| **FLAC** | Lossless, full tags. Recommended if your decoder supports it | Embedded |
+| **MP3 320** *(default)* | Plays everywhere: phones, computers, DFPlayer Mini, VS1003/1053… | Embedded |
+| **FLAC** | Lossless, full tags. Best for hi-fi or a DIY player that supports it | Embedded |
 | **WAV** | Raw PCM: the easiest on a microcontroller (straight to an I2S DAC) | Separate `.jpg` |
-| **MP3 320** | Maximum compatibility (DFPlayer Mini, VS1003/1053…) | Embedded |
 | **Original** | The Opus/AAC exactly as YouTube serves it, untouched | Embedded |
 
 **Best quality:** YouTube Music already serves compressed audio (Opus ~130 kbps). With **Cookies** = your
@@ -214,6 +229,14 @@ Downloading content from YouTube may breach its [terms of service](https://www.y
 copyright of the music. This tool is meant for personal use with content you have the right to download (your
 own music, free licenses, backups of what you already own). You alone are responsible for how you use it. It
 is not affiliated with YouTube or Google. It relies on [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+
+## Credits
+
+- Sample song: “Carefree” by Kevin MacLeod ([incompetech.com](https://incompetech.com)), licensed under
+  [Creative Commons: By Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
+- Built on [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ytmusicapi](https://github.com/sigma67/ytmusicapi),
+  [PySide6](https://doc.qt.io/qtforpython-6/), [mutagen](https://github.com/quodlibet/mutagen) and
+  [QtAwesome](https://github.com/spyder-ide/qtawesome) (Material Design Icons).
 
 ## License
 
