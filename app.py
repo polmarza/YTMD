@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import time
 import subprocess
 import sys
 import traceback
@@ -11,7 +12,7 @@ from dataclasses import asdict, dataclass, fields
 
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg*=false")
 
-from PySide6.QtCore import QObject, QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QProcess, QSettings, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
@@ -19,12 +20,18 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+import i18n
 import library
-from downloader import FORMATS, PAUSES, Callbacks, Downloader, Options, Result
+import updater
+from downloader import (
+    DEFAULT_FORMAT, DEFAULT_PAUSE, NO_BROWSER, PAUSES, Callbacks, Downloader, Options, Result, migrate,
+)
+from i18n import tr, trn
+from version import GITHUB_REPO, __version__
 from ui import style
 from ui.covers import Covers
 from ui.import_dialog import ImportDialog
-from ui.pages import CollectionPage, DownloadsPage, HomePage
+from ui.pages import CollectionPage, DownloadsPage, HomePage, SettingsPage
 from ui.widgets import ROLE, PlayerBar, QueueRow, SidebarDelegate
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +50,20 @@ def reveal_in_file_manager(path: str):
     else:
         open_folder(os.path.dirname(path))
 DEFAULT_DIR = os.path.expanduser("~/Music/YT Music")
+# YTMD_PROFILE permite pruebas con ajustes aparte, sin tocar los tuyos
+PROFILE = os.environ.get("YTMD_PROFILE", "YTMusicDownloader")
+
+
+def set_combo(combo, data):
+    """Selecciona en un desplegable el elemento con ese dato (si existe)."""
+    i = combo.findData(data)
+    if i >= 0:
+        combo.setCurrentIndex(i)
+
+
+def relaunch():
+    """Abre otra copia de la app (para cambiar de idioma o aplicar una actualización)."""
+    QProcess.startDetached(sys.executable, sys.argv)
 
 
 # ---------------------------------------------------------------- descarga en hilo
@@ -91,8 +112,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("YT Music Downloader")
         self.resize(1360, 880)
         self.setMinimumSize(1000, 640)
-        # YTMD_PROFILE permite pruebas con ajustes aparte, sin tocar los tuyos
-        self.settings = QSettings("polmarza", os.environ.get("YTMD_PROFILE", "YTMusicDownloader"))
+        self.settings = QSettings("polmarza", PROFILE)
         self.covers = Covers(self.devicePixelRatioF() or 2.0)
         self.collections: list[library.Collection] = []
         self.all_col: library.Collection | None = None
@@ -119,11 +139,15 @@ class MainWindow(QMainWindow):
         self.rescan_timer = QTimer(self, singleShot=True, interval=2500)
         self.rescan_timer.timeout.connect(self.rescan)
 
+        self._tasks: list[QThread] = []
+        self._manual_check = False
         self._build()
         self._wire_player()
         self._load_settings()
         self.rescan()
         self._restore_queue()
+        self.settings_page.set_versions(__version__, updater.ytdlp_version())
+        QTimer.singleShot(3000, self.check_updates)      # sin molestar al arrancar
 
     # ------------------------------------------------------------ construcción
     def _build(self):
@@ -141,10 +165,15 @@ class MainWindow(QMainWindow):
         self.home = HomePage(self.covers)
         self.colpage = CollectionPage(self.covers)
         self.downloads = DownloadsPage()
+        self.settings_page = SettingsPage()
         self.stack = QStackedWidget()
-        for page in (self.home, self.colpage, self.downloads):
+        for page in (self.home, self.colpage, self.downloads, self.settings_page):
             self.stack.addWidget(page)
-        main.addWidget(self.stack, 1)
+        right = QVBoxLayout()
+        right.setSpacing(0)
+        right.addWidget(self._build_banner())
+        right.addWidget(self.stack, 1)
+        main.addLayout(right, 1)
 
         self.bar = PlayerBar(self.covers)
         outer.addWidget(self.bar)
@@ -160,6 +189,12 @@ class MainWindow(QMainWindow):
         self.colpage.tracks.toggle_requested.connect(self.toggle_play)
         self.downloads.enqueue.connect(self.enqueue)
         self.downloads.import_requested.connect(self.import_from_account)
+        sp = self.settings_page
+        sp.check_updates.connect(lambda: self.check_updates(manual=True))
+        sp.apply_update.connect(self.apply_update)
+        sp.update_ytdlp.connect(self.update_ytdlp)
+        sp.language_selected.connect(self.change_language)
+        sp.restart_requested.connect(self.restart)
         self.downloads.pause_toggled.connect(self._set_queue_paused)
         self.downloads.clear_finished.connect(self.clear_finished)
         self.downloads.choose_dir.connect(self.choose_dir)
@@ -168,6 +203,26 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Space), self, self.toggle_play)
         QShortcut(QKeySequence.Find, self, self._focus_search)
         QShortcut(QKeySequence("Ctrl+D"), self, self.go_downloads)
+
+    def _build_banner(self) -> QWidget:
+        """Aviso de versión nueva, arriba del contenido. Oculto hasta que haya una."""
+        self.banner = QFrame(objectName="banner")
+        row = QHBoxLayout(self.banner)
+        row.setContentsMargins(40, 8, 20, 8)
+        self.banner_label = QLabel()
+        row.addWidget(self.banner_label, 1)
+        self.banner_open = QPushButton(tr("See what's new"))
+        self.banner_open.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._release.url)))
+        row.addWidget(self.banner_open)
+        update = QPushButton(tr("Update"))
+        update.clicked.connect(lambda: self.go("settings"))
+        row.addWidget(update)
+        close = QPushButton(tr("Not now"))
+        close.clicked.connect(self._dismiss_banner)
+        row.addWidget(close)
+        self.banner.hide()
+        self._release: updater.Release | None = None
+        return self.banner
 
     def _build_sidebar(self) -> QWidget:
         side = QFrame(objectName="sidebar")
@@ -181,14 +236,14 @@ class MainWindow(QMainWindow):
         mark = QLabel()
         mark.setPixmap(style.icon("music-circle", style.ACCENT).pixmap(30, 30))
         logo.addWidget(mark)
-        logo.addWidget(QLabel("Mi Música", objectName="logo"))
+        logo.addWidget(QLabel(tr("My Music"), objectName="logo"))
         logo.addStretch(1)
         lay.addLayout(logo)
 
         self.nav = QButtonGroup(self)
         self.nav_buttons = {}
-        for key, label, ic in (("home", "Inicio", "home-outline"), ("songs", "Canciones", "music-note"),
-                               ("downloads", "Descargas", "download")):
+        for key, label, ic in (("home", tr("Home"), "home-outline"), ("songs", tr("Songs"), "music-note"),
+                               ("downloads", tr("Downloads"), "download"), ("settings", tr("Settings"), "cog-outline")):
             b = QPushButton(f"  {label}", objectName="nav", checkable=True)
             b.setIcon(style.icon(ic))
             b.setIconSize(QSize(22, 22))
@@ -199,7 +254,7 @@ class MainWindow(QMainWindow):
             lay.addWidget(b)
 
         lay.addWidget(QFrame(objectName="sep"))
-        add = QPushButton("  Descargar", objectName="pill")
+        add = QPushButton("  " + tr("Download"), objectName="pill")
         add.setIcon(style.icon("plus"))
         add.setCursor(Qt.PointingHandCursor)
         add.clicked.connect(self.go_downloads)
@@ -219,7 +274,8 @@ class MainWindow(QMainWindow):
         if key == "songs":      # "Canciones" es una lista más: todas las canciones juntas
             self.open_collection(self.all_col)
             return
-        self.stack.setCurrentWidget({"home": self.home, "downloads": self.downloads}[key])
+        self.stack.setCurrentWidget({"home": self.home, "downloads": self.downloads,
+                                     "settings": self.settings_page}[key])
         self._set_nav(key)
         self.side_list.clearSelection()
 
@@ -289,7 +345,7 @@ class MainWindow(QMainWindow):
         opts = self.current_options()
         opts.skip_existing = True        # actualizar = bajar solo lo nuevo
         self._add_job(c.url, opts)
-        self.downloads.add_log(f"Actualizando «{c.title}»…")
+        self.downloads.add_log(tr("Updating «{title}»…", title=c.title))
         self._pump()
 
     # ------------------------------------------------------------ ajustes
@@ -298,9 +354,10 @@ class MainWindow(QMainWindow):
         d = self.downloads
         self.out_dir = s.value("out_dir", DEFAULT_DIR)
         d.set_dir(self.out_dir)
-        d.cmb_format.setCurrentText(s.value("format", next(iter(FORMATS))))
-        d.cmb_browser.setCurrentText(s.value("browser", "Ninguno"))
-        d.cmb_pause.setCurrentText(s.value("pause", "Prudente (3–8 s)"))
+        # los ajustes de versiones anteriores guardaban el texto en español: migrate() lo convierte
+        set_combo(d.cmb_format, migrate(s.value("format", DEFAULT_FORMAT)))
+        set_combo(d.cmb_browser, migrate(s.value("browser", NO_BROWSER)))
+        set_combo(d.cmb_pause, migrate(s.value("pause", DEFAULT_PAUSE)))
         d.chk_44k.setChecked(s.value("compat_44k", True, type=bool))
         d.chk_ascii.setChecked(s.value("ascii", False, type=bool))
         d.chk_cover.setChecked(s.value("cover_file", True, type=bool))
@@ -318,9 +375,9 @@ class MainWindow(QMainWindow):
         s = self.settings
         d = self.downloads
         s.setValue("out_dir", self.out_dir)
-        s.setValue("format", d.cmb_format.currentText())
-        s.setValue("browser", d.cmb_browser.currentText())
-        s.setValue("pause", d.cmb_pause.currentText())
+        s.setValue("format", d.cmb_format.currentData())
+        s.setValue("browser", d.cmb_browser.currentData())
+        s.setValue("pause", d.cmb_pause.currentData())
         s.setValue("compat_44k", d.chk_44k.isChecked())
         s.setValue("ascii", d.chk_ascii.isChecked())
         s.setValue("cover_file", d.chk_cover.isChecked())
@@ -333,13 +390,13 @@ class MainWindow(QMainWindow):
     def current_options(self) -> Options:
         d = self.downloads
         return Options(
-            out_dir=self.out_dir, format_name=d.cmb_format.currentText(),
-            browser=d.cmb_browser.currentText(), pause=d.cmb_pause.currentText(),
+            out_dir=self.out_dir, format_name=d.cmb_format.currentData(),
+            browser=d.cmb_browser.currentData(), pause=d.cmb_pause.currentData(),
             compat_44k=d.chk_44k.isChecked(), ascii_names=d.chk_ascii.isChecked(),
             cover_file=d.chk_cover.isChecked(), skip_existing=d.chk_skip.isChecked())
 
     def choose_dir(self):
-        d = QFileDialog.getExistingDirectory(self, "Carpeta de música", self.out_dir)
+        d = QFileDialog.getExistingDirectory(self, tr("Music folder"), self.out_dir)
         if d:
             self.out_dir = d
             self.downloads.set_dir(d)
@@ -353,22 +410,160 @@ class MainWindow(QMainWindow):
         if self.thread:
             self.thread.quit()
             self.thread.wait(5000)
+        for t in list(self._tasks):
+            t.quit()
+            t.wait(3000)
         super().closeEvent(e)
+
+    # ------------------------------------------------------------ actualizaciones
+    def _run_task(self, fn, slot):
+        """Ejecuta `fn` en un hilo; `slot` (método de la ventana) recibe (resultado, error)."""
+        thread = QThread(self)
+        task = updater.Task(fn)
+        thread._task = task                  # mantiene vivo el objeto mientras trabaja
+        task.moveToThread(thread)
+        thread.started.connect(task.run)
+        task.done.connect(slot)
+        task.done.connect(thread.quit)
+        thread.finished.connect(lambda t=thread: self._tasks.remove(t))
+        thread.finished.connect(thread.deleteLater)
+        self._tasks.append(thread)
+        thread.start()
+
+    def check_updates(self, manual: bool = False):
+        """Busca una versión nueva en GitHub. Sola: como mucho una vez al día."""
+        sp = self.settings_page
+        if not GITHUB_REPO:
+            if manual:
+                sp.set_app_status(tr("This copy has no repository configured (GITHUB_REPO in version.py)."))
+            return
+        now = time.time()
+        if not manual and now - self.settings.value("last_update_check", 0, type=float) < 86400:
+            return
+        self._manual_check = manual
+        if manual:
+            sp.set_app_status(tr("Checking…"))
+        self.settings.setValue("last_update_check", now)
+        self._run_task(lambda: updater.latest_release(GITHUB_REPO), self._on_update_checked)
+
+    @Slot(object, str)
+    def _on_update_checked(self, rel: updater.Release | None, error: str):
+        sp = self.settings_page
+        manual, self._manual_check = self._manual_check, False
+        if error:
+            if manual:
+                sp.set_app_status(tr("Couldn't check: {error}", error=error))
+            return
+        if rel is None or not updater.is_newer(rel.tag, __version__):
+            sp.hide_offer()
+            if manual:
+                sp.set_app_status(tr("You're up to date (version {version}).", version=__version__))
+            return
+        self._release = rel
+        sp.offer_update(rel.tag, updater.is_git_checkout())
+        sp.set_app_status(tr("Version {tag} is available.", tag=rel.tag))
+        if not manual and self.settings.value("dismissed_version", "") == rel.tag:
+            return                         # ya dijiste «ahora no» a esta versión
+        self.banner_label.setText(tr("A new version is available: <b>{tag}</b> (you have {current}).",
+                                     tag=rel.tag, current=__version__))
+        self.banner.show()
+
+    def _dismiss_banner(self):
+        if self._release:
+            self.settings.setValue("dismissed_version", self._release.tag)
+        self.banner.hide()
+
+    def _busy_downloading(self) -> bool:
+        if self.running:
+            self.settings_page.set_app_status(tr("Wait for the current download to finish before updating."))
+        return self.running is not None
+
+    def apply_update(self):
+        """Actualiza la app (git pull) o, si no se instaló con git, abre la página de la versión."""
+        if not updater.is_git_checkout():
+            if self._release:
+                QDesktopServices.openUrl(QUrl(self._release.url))
+            return
+        if self._busy_downloading():
+            return
+        self.settings_page.btn_apply.setEnabled(False)
+        self.settings_page.set_app_status(tr("Updating…"))
+        self._run_task(updater.update_app, self._on_app_updated)
+
+    @Slot(object, str)
+    def _on_app_updated(self, result, error: str):
+        sp = self.settings_page
+        sp.btn_apply.setEnabled(True)
+        if error:
+            sp.set_app_status(tr("Couldn't update: {error}", error=error))
+            return
+        old, new = result
+        if old == new:
+            sp.set_app_status(tr("Already up to date."))
+            return
+        sp.hide_offer()
+        self.banner.hide()
+        sp.set_app_status(tr("Updated ({old} → {new}). Restart to use the new version.", old=old, new=new))
+        sp.show_restart()
+
+    def update_ytdlp(self):
+        if self._busy_downloading():
+            return
+        sp = self.settings_page
+        sp.btn_ytdlp.setEnabled(False)
+        sp.set_ytdlp_status(tr("Updating yt-dlp…"))
+        self._run_task(updater.update_ytdlp, self._on_ytdlp_updated)
+
+    @Slot(object, str)
+    def _on_ytdlp_updated(self, result, error: str):
+        sp = self.settings_page
+        sp.btn_ytdlp.setEnabled(True)
+        if error:
+            sp.set_ytdlp_status(tr("Couldn't update yt-dlp: {error}", error=error))
+            return
+        before, after = result
+        if before == after:
+            sp.set_ytdlp_status(tr("yt-dlp is already on the latest version ({version}).", version=after))
+        else:
+            sp.set_ytdlp_status(tr("yt-dlp updated: {before} → {after}. Restart to use it.",
+                                   before=before, after=after))
+            sp.show_restart()
+
+    # ------------------------------------------------------------ idioma y reinicio
+    def change_language(self, code: str):
+        if code == i18n.language():
+            return
+        busy = self.running is not None or self._pending()
+        answer = QMessageBox.question(
+            self, tr("Change language"),
+            tr("The app will restart to apply the language.")
+            + ("\n\n" + tr("The download queue will be kept, paused, so you can resume it.") if busy else ""),
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Yes)
+        if answer != QMessageBox.Yes:
+            self.settings_page.revert_language()
+            return
+        self.settings.setValue("language", code)
+        self.restart()
+
+    def restart(self):
+        self.close()              # guarda ajustes y cola, y cancela lo que esté en marcha
+        relaunch()
+        QApplication.quit()
 
     # ------------------------------------------------------------ importar
     def import_from_account(self):
-        browser = self.downloads.cmb_browser.currentText()
-        if browser == "Ninguno":
+        browser = self.downloads.cmb_browser.currentData()
+        if browser == NO_BROWSER:
             QMessageBox.information(
-                self, "Elige tu navegador",
-                "Para leer tu biblioteca, elige en «Cookies» el navegador donde tienes abierta "
-                "tu sesión de YouTube Music (por ejemplo, chrome) y vuelve a pulsar Importar.")
+                self, tr("Choose your browser"),
+                tr("To read your library, choose in «Cookies» the browser where you're signed in to "
+                   "YouTube Music (for example, chrome) and press Import again."))
             self.downloads.cmb_browser.setFocus()
             return
         if not self.downloads.chk_skip.isChecked():
             self.downloads.chk_skip.setChecked(True)    # sin esto no se evitan los duplicados
-            self.downloads.add_log("«Saltar ya descargadas» activado para no duplicar canciones.")
-        dlg = ImportDialog(self, browser, self.collections, self.downloads.cmb_format.currentText())
+            self.downloads.add_log(tr("«Skip already downloaded» turned on so songs aren't duplicated."))
+        dlg = ImportDialog(self, browser, self.collections, self.downloads.cmb_format.currentData())
         if dlg.exec() and dlg.urls:
             self.enqueue(dlg.urls)
 
@@ -377,7 +572,7 @@ class MainWindow(QMainWindow):
         opts = self.current_options()
         for u in urls:
             self._add_job(u, Options(**asdict(opts)))   # cada trabajo guarda sus opciones
-        self.downloads.add_log(f"＋ {len(urls)} enlace(s) añadidos a la cola")
+        self.downloads.add_log(tr("＋ {n} link(s) added to the queue", n=len(urls)))
         self._pump()
 
     def _add_job(self, url: str, opts: Options) -> Job:
@@ -394,7 +589,7 @@ class MainWindow(QMainWindow):
     def _remove_job(self, job: Job):
         if job is self.running:
             self.worker.cancel()
-            job.row.set_state("running", "Cancelando…")
+            job.row.set_state("running", tr("Cancelling…"))
             return
         self.jobs.remove(job)
         self.downloads.remove_row(job.row)
@@ -403,7 +598,7 @@ class MainWindow(QMainWindow):
 
     def _retry_job(self, job: Job):
         job.state = "pending"
-        job.row.set_state("pending", "En cola")
+        job.row.set_state("pending", tr("Queued"))
         self._save_queue()
         self._pump()
 
@@ -416,7 +611,7 @@ class MainWindow(QMainWindow):
         if paused:
             self.wait_timer.stop()
             for j in self._pending()[:1]:
-                j.row.set_state("pending", "En cola")
+                j.row.set_state("pending", tr("Queued"))
             self._refresh_queue_label()
         else:
             self._pump()
@@ -426,9 +621,9 @@ class MainWindow(QMainWindow):
 
     def _refresh_queue_label(self):
         n = len(self._pending()) + (1 if self.running else 0)
-        self.downloads.lbl_queue.setText(f"  {n} pendiente{'s' if n != 1 else ''}"
-                                         + (" · en pausa" if self.queue_paused else ""))
-        self.nav_buttons["downloads"].setText(f"  Descargas ({n})" if n else "  Descargas")
+        self.downloads.lbl_queue.setText("  " + trn(n, "{n} item pending", "{n} items pending")
+                                         + (tr(" · paused") if self.queue_paused else ""))
+        self.nav_buttons["downloads"].setText("  " + (tr("Downloads ({n})", n=n) if n else tr("Downloads")))
 
     def _pump(self):
         """Arranca el siguiente trabajo si no hay ninguno en marcha ni esperando."""
@@ -443,7 +638,7 @@ class MainWindow(QMainWindow):
         self.running = job
         job.state = "running"
         job.index, job.total, job.name = 1, 1, ""
-        job.row.set_state("running", "Analizando enlace…")
+        job.row.set_state("running", tr("Analyzing link…"))
         job.row.bar.setValue(0)
         self.thread = QThread(self)
         self.worker = DownloadWorker(job.url, job.opts)
@@ -465,7 +660,7 @@ class MainWindow(QMainWindow):
         job = self.running
         job.total = total
         job.row.set_info(title, kind)
-        job.row.set_state("running", f"{total} canción{'es' if total != 1 else ''}")
+        job.row.set_state("running", trn(total, "{n} song", "{n} songs"))
 
     @Slot(int, int, str)
     def _on_item(self, i: int, n: int, name: str):
@@ -493,28 +688,30 @@ class MainWindow(QMainWindow):
         self.thread = self.worker = self.running = None
         if error:
             job.state = "error"
-            job.row.set_state("error", f"Error: {error.splitlines()[0][:160]}")
+            job.row.set_state("error", tr("Error: {error}", error=error.splitlines()[0][:160]))
             self.downloads.add_log("✖ " + error)
         elif res.cancelled:
             job.state = "cancelled"
-            job.row.set_state("cancelled", f"Cancelado · {res.done} descargadas")
+            job.row.set_state("cancelled", tr("Cancelled · {n} downloaded", n=res.done))
         elif res.errors and not res.done:
             job.state = "error"
-            job.row.set_state("error", f"No se pudo descargar ({res.errors} errores, mira el registro)")
+            job.row.set_state("error", tr("Couldn't download ({n} errors, see the log)", n=res.errors))
         else:
             job.state = "done"
-            extra = f" · {res.errors} con error" if res.errors else ""
-            job.row.set_state("done", f"Hecho · {res.done} nuevas{extra}")
+            extra = tr(" · {n} with errors", n=res.errors) if res.errors else ""
+            if res.already:
+                extra += tr(" · {n} already in your library", n=res.already)
+            job.row.set_state("done", tr("Done · {n} new", n=res.done) + extra)
         self._save_queue()
         self.rescan()
 
         if res.blocked:
             self.downloads.btn_pause.setChecked(True)     # pausa la cola
             QMessageBox.warning(
-                self, "YouTube ha frenado las descargas",
-                "YouTube ha empezado a rechazar peticiones (demasiadas seguidas).\n\n"
-                "He pausado la cola. Espera un rato (30–60 min), pon las pausas en «Segura» "
-                "y reanuda: lo ya descargado se salta.")
+                self, tr("YouTube has throttled the downloads"),
+                tr("YouTube has started rejecting requests (too many in a row).") + "\n\n" +
+                tr("I've paused the queue. Wait a while (30–60 min), set the pauses to «Safe» "
+                   "and resume: what's already downloaded is skipped."))
             return
         # pausa entre trabajos de la cola, igual que entre canciones
         lo, hi, _ = PAUSES.get(job.opts.pause, (0, 0, 0))
@@ -532,10 +729,10 @@ class MainWindow(QMainWindow):
         if self.wait_left <= 0 or not nxt:
             self.wait_timer.stop()
             if nxt:
-                nxt[0].row.set_state("pending", "En cola")
+                nxt[0].row.set_state("pending", tr("Queued"))
             self._pump()
             return
-        nxt[0].row.set_state("pending", f"Empieza en {self.wait_left} s (pausa anti-bloqueo)")
+        nxt[0].row.set_state("pending", tr("Starts in {secs} s (anti-block pause)", secs=self.wait_left))
 
     def _save_queue(self):
         keep = [{"url": j.url, "opts": asdict(j.opts)} for j in self.jobs
@@ -549,11 +746,15 @@ class MainWindow(QMainWindow):
             saved = []
         names = {f.name for f in fields(Options)}
         for item in saved:
-            self._add_job(item["url"], Options(**{k: v for k, v in item["opts"].items() if k in names}))
+            opts = {k: v for k, v in item["opts"].items() if k in names}
+            for k in ("format_name", "browser", "pause"):        # colas guardadas con el texto antiguo
+                if k in opts:
+                    opts[k] = migrate(opts[k])
+            self._add_job(item["url"], Options(**opts))
         if saved:
             # no arranca sola al abrir la app: que lo decidas tú
             self.downloads.btn_pause.setChecked(True)
-            self.downloads.add_log(f"Cola restaurada: {len(saved)} pendiente(s). Pulsa «Reanudar cola».")
+            self.downloads.add_log(tr("Queue restored: {n} pending. Press «Resume».", n=len(saved)))
 
     # ------------------------------------------------------------ reproductor
     def _wire_player(self):
@@ -570,7 +771,7 @@ class MainWindow(QMainWindow):
         self.player.durationChanged.connect(b.set_duration)
         self.player.playbackStateChanged.connect(self._on_state)
         self.player.mediaStatusChanged.connect(self._on_status)
-        self.player.errorOccurred.connect(lambda _e, msg: self.downloads.add_log("✖ Reproductor: " + msg))
+        self.player.errorOccurred.connect(lambda _e, msg: self.downloads.add_log(tr("✖ Player: {msg}", msg=msg)))
 
     def _is_playing(self) -> bool:
         return self.player.playbackState() == QMediaPlayer.PlayingState
@@ -625,7 +826,7 @@ class MainWindow(QMainWindow):
         if t is None:
             return
         if not os.path.isfile(t.path):
-            self.downloads.add_log("✖ No existe: " + t.path)
+            self.downloads.add_log(tr("✖ Doesn't exist: {path}", path=t.path))
             return
         self.player.setSource(QUrl.fromLocalFile(t.path))
         self.player.play()
@@ -678,6 +879,8 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # el idioma se fija antes de crear nada: los textos se traducen al construirlos
+    i18n.set_language(QSettings("polmarza", PROFILE).value("language", i18n.DEFAULT))
     app = QApplication(sys.argv)
     app.setApplicationName("YT Music Downloader")
     app.setStyleSheet(style.stylesheet())

@@ -12,10 +12,11 @@ from PySide6.QtWidgets import (
 
 import importer
 import library
+from i18n import tr, trn
 from ui import style
 
 # MB aproximados por canción (~4 min) según el formato, para avisar del espacio
-MB_PER_SONG = {"FLAC": 25, "WAV": 40, "MP3": 9, "Original": 4}
+MB_PER_SONG = {"flac": 25, "wav": 40, "mp3": 9, "original": 4}
 
 
 class _Fetcher(QObject):
@@ -42,10 +43,10 @@ class ImportDialog(QDialog):
     def __init__(self, parent, browser: str, collections: list[library.Collection], format_name: str):
         super().__init__(parent)
         self.setObjectName("root")
-        self.setWindowTitle("Importar desde YouTube Music")
+        self.setWindowTitle(tr("Import from YouTube Music"))
         self.resize(820, 680)
         self.urls: list[str] = []
-        self.mb = next((v for k, v in MB_PER_SONG.items() if format_name.startswith(k)), 25)
+        self.mb = MB_PER_SONG.get(format_name, 25)
         # para reconocer lo que ya tienes: por id de origen, por enlace o por título
         self.local_by_id = {c.source: c for c in collections if c.source}
         self.local_by_url = {c.url: c for c in collections if c.url}
@@ -54,15 +55,15 @@ class ImportDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 20, 24, 20)
         lay.setSpacing(12)
-        lay.addWidget(QLabel("Importar desde YouTube Music", objectName="h2"))
-        self.info = QLabel(f"Leyendo tu biblioteca con la sesión de {browser}…", objectName="muted",
+        lay.addWidget(QLabel(tr("Import from YouTube Music"), objectName="h2"))
+        self.info = QLabel(tr("Reading your library with the {browser} session…", browser=browser), objectName="muted",
                            wordWrap=True)
         lay.addWidget(self.info)
         self.busy = QProgressBar(textVisible=False, maximum=0)     # indeterminada mientras carga
         lay.addWidget(self.busy)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Nombre", "Detalle", "Canciones", "En tu biblioteca"])
+        self.tree.setHeaderLabels([tr("Name"), tr("Details"), tr("Songs"), tr("In your library")])
         self.tree.setRootIsDecorated(True)
         self.tree.setUniformRowHeights(True)
         self.tree.setTextElideMode(Qt.ElideRight)
@@ -79,9 +80,9 @@ class ImportDialog(QDialog):
         lay.addWidget(self.tree, 1)
 
         row = QHBoxLayout()
-        self.btn_new = QPushButton("Marcar lo que no tengo")
+        self.btn_new = QPushButton(tr("Select what I don't have"))
         self.btn_new.clicked.connect(self._check_new)
-        self.btn_none = QPushButton("Desmarcar todo")
+        self.btn_none = QPushButton(tr("Clear selection"))
         self.btn_none.clicked.connect(lambda: self._set_all(Qt.Unchecked))
         row.addWidget(self.btn_new)
         row.addWidget(self.btn_none)
@@ -93,9 +94,9 @@ class ImportDialog(QDialog):
 
         row = QHBoxLayout()
         row.addStretch(1)
-        cancel = QPushButton("Cancelar")
+        cancel = QPushButton(tr("Cancel"))
         cancel.clicked.connect(self.reject)
-        self.btn_ok = QPushButton("Añadir a la cola", objectName="primary")
+        self.btn_ok = QPushButton(tr("Add to queue"), objectName="primary")
         self.btn_ok.setEnabled(False)
         self.btn_ok.clicked.connect(self._accept)
         row.addWidget(cancel)
@@ -127,11 +128,11 @@ class ImportDialog(QDialog):
     def _loaded(self, items: list, error: str):
         self.busy.hide()
         if error:
-            self.info.setText(f"No se pudo leer tu biblioteca: {error}")
+            self.info.setText(tr("Couldn't read your library: {error}", error=error))
             return
         self.tree.blockSignals(True)
         groups = {}
-        for kind, label in (("playlist", "Listas"), ("album", "Álbumes")):
+        for kind, label in (("playlist", tr("Playlists")), ("album", tr("Albums"))):
             g = QTreeWidgetItem([label])
             g.setFlags(g.flags() | Qt.ItemIsAutoTristate | Qt.ItemIsUserCheckable)
             g.setCheckState(0, Qt.Unchecked)
@@ -143,9 +144,9 @@ class ImportDialog(QDialog):
             count = "" if it.count is None else str(it.count)
             have = ""
             if local:
-                have = f"Sí · {len(local.tracks)} canciones"
+                have = tr("Yes · {songs}", songs=trn(len(local.tracks), "{n} song", "{n} songs"))
             elif not it.supported:
-                have = "No compatible"
+                have = tr("Not supported")
             row = QTreeWidgetItem([it.title, it.subtitle, count, have])
             row.setData(0, Qt.UserRole, it)
             row.setData(0, Qt.UserRole + 1, bool(local))
@@ -154,13 +155,13 @@ class ImportDialog(QDialog):
                 row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
                 row.setCheckState(0, Qt.Unchecked)
                 if local:
-                    row.setToolTip(0, "Ya la tienes: si la marcas, solo se descargará lo nuevo.")
+                    row.setToolTip(0, tr("You already have it: if you select it, only what's new will be downloaded."))
             else:
                 row.setFlags(row.flags() & ~Qt.ItemIsEnabled & ~Qt.ItemIsUserCheckable)
-                row.setToolTip(0, "YouTube no deja leer este tipo de lista automática (Recaps, listas "
-                                  "de YouTube Music, mixes). Truco: añade sus canciones a una lista tuya.")
+                row.setToolTip(0, tr("YouTube doesn't allow reading this kind of automatic playlist (Recaps, "
+                                     "YouTube Music playlists, mixes). Tip: add its songs to a playlist of your own."))
             if it.id == "LM":
-                row.setText(0, "Música que me gusta")
+                row.setText(0, tr("Liked Music"))
             groups[it.kind].addChild(row)
         for kind, g in groups.items():
             g.setText(0, f"{g.text(0)} ({g.childCount()})")
@@ -169,10 +170,10 @@ class ImportDialog(QDialog):
         self.tree.show()
         n_pl = groups["playlist"].childCount()
         n_al = groups["album"].childCount()
-        self.info.setText(
-            f"{n_pl} listas y {n_al} álbumes en tu cuenta. Marca lo que quieras descargar: "
-            "las canciones que ya tengas no se vuelven a bajar (si están en otra carpeta, "
-            "la lista las enlaza).")
+        self.info.setText(tr(
+            "{playlists} and {albums} in your account. Select what you want to download: songs you "
+            "already have aren't downloaded again (if they're in another folder, the playlist links them).",
+            playlists=trn(n_pl, "{n} playlist", "{n} playlists"), albums=trn(n_al, "{n} album", "{n} albums")))
         for b in (self.btn_new, self.btn_none):
             b.setEnabled(True)
         self._update_summary()
@@ -197,7 +198,7 @@ class ImportDialog(QDialog):
         self._update_summary()
 
     def _check_new(self):
-        """Marca lo que aún no está en tu biblioteca (salvo «Música que me gusta», que es enorme)."""
+        """Marca lo que aún no está en tu biblioteca (salvo «Liked Music», que es enorme)."""
         self.tree.blockSignals(True)
         for r in self._rows():
             if r.flags() & Qt.ItemIsUserCheckable:
@@ -210,21 +211,21 @@ class ImportDialog(QDialog):
     def _update_summary(self, *_):
         sel = self._selected()
         self.btn_ok.setEnabled(bool(sel))
-        self.btn_ok.setText(f"Añadir {len(sel)} a la cola" if sel else "Añadir a la cola")
+        self.btn_ok.setText(tr("Add {n} to queue", n=len(sel)) if sel else tr("Add to queue"))
         if not sel:
             self.summary.setText("")
             return
         known = sum(it.count or 0 for it in sel)
         unknown = sum(1 for it in sel if it.count is None)
-        text = f"{len(sel)} seleccionadas · {known} canciones"
+        text = tr("{selected} selected · {songs}", selected=len(sel), songs=trn(known, "{n} song", "{n} songs"))
         if unknown:
-            text += f" + {unknown} sin recuento (YouTube no da el nº de canciones de los álbumes)"
+            text += tr(" + {n} without a count (YouTube doesn't give the number of songs of albums)", n=unknown)
         gb = known * self.mb / 1024
         if known:
-            text += f" · hasta ~{gb:.1f} GB (menos si ya tienes parte)"
+            text += tr(" · up to ~{gb} GB (less if you already have part of it)", gb=f"{gb:.1f}")
         if known > 300:
-            text += ("\n⚠ Son muchas: tardará horas. Usa pausas «Segura» y deja que la cola vaya "
-                     "haciendo; puedes pausarla cuando quieras.")
+            text += "\n" + tr("⚠ That's a lot: it will take hours. Use «Safe» pauses and let the queue "
+                              "work through it; you can pause it whenever you like.")
         self.summary.setText(text)
 
     def _accept(self):

@@ -23,11 +23,17 @@ from mutagen.flac import FLAC, Picture
 from mutagen.id3 import ID3
 from mutagen.mp4 import MP4
 
+from i18n import tr, trn
+
 AUDIO_EXT = {".flac", ".wav", ".mp3", ".m4a", ".opus", ".ogg", ".aac"}
 META_FILE = ".coleccion.json"
 CACHE_FILE = ".biblioteca-cache.json"
 INDEX_FILE = ".indice.json"         # id de vídeo de YouTube -> archivo (ruta relativa a la raíz)
-KINDS = {"album": "Álbum", "playlist": "Lista", "singles": "Sueltas", "all": "Biblioteca"}
+
+
+def kind_label(kind: str) -> str:
+    return {"album": tr("Album"), "playlist": tr("Playlist"), "singles": tr("Loose"),
+            "all": tr("Library")}.get(kind, kind)
 
 
 # Grupos con coma en el nombre: no se pueden partir por ", " sin romperlos.
@@ -89,14 +95,14 @@ class Collection:
 
     @property
     def kind_label(self) -> str:
-        return KINDS.get(self.kind, self.kind)
+        return kind_label(self.kind)
 
     @property
     def subtitle(self) -> str:
         if self.kind == "album":
             parts = [self.kind_label, self.artist, self.year]
         else:
-            parts = [self.kind_label, f"{len(self.tracks)} canciones"]
+            parts = [self.kind_label, trn(len(self.tracks), "{n} song", "{n} songs")]
         return " • ".join(p for p in parts if p)
 
 
@@ -262,7 +268,7 @@ def scan(root: str) -> list[Collection]:
     if not os.path.isdir(root):
         return []
     cache = _TagCache(root)
-    loose = Collection("", root, "Canciones sueltas", "singles")
+    loose = Collection("", root, tr("Loose songs"), "singles")
     folders: list[Collection] = []
     for dirpath, dirnames, files in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
@@ -314,7 +320,7 @@ def all_songs(collections: list[Collection], root: str) -> Collection:
     """Colección virtual con todas las canciones, para verlas y reproducirlas como una lista más."""
     tracks = sorted((t for c in collections for t in c.tracks if not t.ref),
                     key=lambda t: (t.artist.lower(), t.album.lower(), t.title.lower()))
-    return Collection(id="__all__", path=root, title="Canciones", kind="all", tracks=tracks)
+    return Collection(id="__all__", path=root, title=tr("Songs"), kind="all", tracks=tracks)
 
 
 # ------------------------------------------------------------------ duplicados

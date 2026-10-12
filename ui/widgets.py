@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 import library
+from i18n import tr, trn
 from ui import style
 from ui.covers import Covers
 
@@ -27,9 +28,10 @@ def fmt_time(seconds: float) -> str:
 def fmt_long(seconds: float) -> str:
     m = int(seconds or 0) // 60
     h, m = divmod(m, 60)
+    minutes = trn(m, "{n} minute", "{n} minutes")
     if h:
-        return f"{h} hora{'s' if h != 1 else ''} y {m} minuto{'s' if m != 1 else ''}"
-    return f"{m} minuto{'s' if m != 1 else ''}"
+        return tr("{hours} and {minutes}", hours=trn(h, "{n} hour", "{n} hours"), minutes=minutes)
+    return minutes
 
 
 def icon_button(name: str, size: int = 40, icon_size: int = 22, obj: str = "iconbtn",
@@ -185,7 +187,7 @@ class CardDelegate(QStyledItemDelegate):
         p.drawText(QRect(x, y + w + 8, w, 20), Qt.AlignLeft | Qt.AlignVCenter, _elide(p, c.title, w))
         p.setFont(style.font(13))
         p.setPen(style.C_MUTED)
-        sub = c.subtitle if c.kind != "singles" else f"{len(c.tracks)} canciones"
+        sub = c.subtitle if c.kind != "singles" else trn(len(c.tracks), "{n} song", "{n} songs")
         p.drawText(QRect(x, y + w + 30, w, 36), Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
                    QFontMetrics(p.font()).elidedText(sub, Qt.ElideRight, w * 2 - 20))
         p.restore()
@@ -340,15 +342,15 @@ class PlayerBar(QFrame):
         row.addLayout(info)
         row.addStretch(1)
 
-        self.btn_vol = icon_button("volume-high", 36, 22, tip="Silenciar")
+        self.btn_vol = icon_button("volume-high", 36, 22, tip=tr("Mute"))
         self.btn_vol.setCheckable(True)
         self.btn_vol.toggled.connect(self._mute)
         self.volume = QSlider(Qt.Horizontal, objectName="volume", maximum=100)
         self.volume.setFixedWidth(100)
         self.volume.valueChanged.connect(self.volume_changed)
-        self.btn_repeat = icon_button("repeat-off", 36, 22, tip="Repetir")
+        self.btn_repeat = icon_button("repeat-off", 36, 22, tip=tr("Repeat"))
         self.btn_repeat.clicked.connect(self._cycle_repeat)
-        self.btn_shuffle = icon_button("shuffle-variant", 36, 22, tip="Aleatorio")
+        self.btn_shuffle = icon_button("shuffle-variant", 36, 22, tip=tr("Shuffle"))
         self.btn_shuffle.setCheckable(True)
         self.btn_shuffle.toggled.connect(self._shuffle)
         self._shuffle(False)
@@ -388,8 +390,8 @@ class PlayerBar(QFrame):
     def set_track(self, t: library.Track | None):
         if t is None:
             self.cover.setPixmap(self.covers.track(library.Track("", "", "", "", 0, ""), 40))
-            self.lbl_title.setText("Nada sonando")
-            self.lbl_sub.setText("Elige una canción de tu biblioteca")
+            self.lbl_title.setText(tr("Nothing playing"))
+            self.lbl_sub.setText(tr("Pick a song from your library"))
             return
         self.cover.setPixmap(self.covers.track(t, 40))
         fm = QFontMetrics(self.lbl_title.font())
@@ -411,7 +413,9 @@ class QueueRow(QFrame):
     remove = Signal()
     retry = Signal()
 
-    KIND = {"album": "ÁLBUM", "playlist": "LISTA", "single": "CANCIÓN", "": "…"}
+    @staticmethod
+    def kind_tag(kind: str) -> str:
+        return {"album": tr("ALBUM"), "playlist": tr("PLAYLIST"), "single": tr("SONG")}.get(kind, "…")
 
     def __init__(self, url: str):
         super().__init__(objectName="queuerow")
@@ -433,16 +437,16 @@ class QueueRow(QFrame):
         top.addWidget(self.tag)
         top.addWidget(self.title, 1)
         col.addLayout(top)
-        self.status = QLabel("En cola", objectName="small")
+        self.status = QLabel(tr("Queued"), objectName="small")
         self.status.setMinimumWidth(10)     # textos largos: se cortan en vez de ensanchar la fila
         col.addWidget(self.status)
         self.bar = QProgressBar(textVisible=False, maximum=1000)
         col.addWidget(self.bar)
         lay.addLayout(col, 1)
 
-        self.btn_retry = icon_button("reload", 34, 20, tip="Reintentar")
+        self.btn_retry = icon_button("reload", 34, 20, tip=tr("Retry"))
         self.btn_retry.clicked.connect(self.retry)
-        self.btn_remove = icon_button("close", 34, 20, tip="Quitar de la cola / cancelar")
+        self.btn_remove = icon_button("close", 34, 20, tip=tr("Remove from the queue / cancel"))
         self.btn_remove.clicked.connect(self.remove)
         lay.addWidget(self.btn_retry)
         lay.addWidget(self.btn_remove)
@@ -461,4 +465,4 @@ class QueueRow(QFrame):
 
     def set_info(self, title: str, kind: str):
         self.title.setText(title)
-        self.tag.setText(self.KIND.get(kind, kind.upper()))
+        self.tag.setText(self.kind_tag(kind))

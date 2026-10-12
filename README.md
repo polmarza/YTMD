@@ -1,39 +1,40 @@
 # YT Music Downloader
 
-Herramienta local para descargar canciones, álbumes y listas de YouTube Music, con una
-biblioteca y reproductor al estilo de YouTube Music. Pensada para preparar música para un
-reproductor MP3 hecho a medida (ESP32).
+🇬🇧 English · 🇪🇸 [Español](README.es.md)
 
-## Instalar y arrancar
+A local desktop tool to download songs, albums and playlists from YouTube Music, with a
+YouTube Music-style library and player. Built to prepare music for a DIY MP3 player (ESP32).
 
-Necesitas **Python 3.10+**, **ffmpeg** y **Node.js** (o Deno; yt-dlp lo usa para resolver YouTube).
+## Install and run
+
+You need **Python 3.10+**, **ffmpeg** and **Node.js** (or Deno; yt-dlp uses it to resolve YouTube).
 
 ### macOS
 
 ```bash
 brew install ffmpeg node
-git clone <url-del-repo> && cd <carpeta>
-./run.command                       # la primera vez crea el entorno e instala dependencias
-.venv/bin/python make_app.py        # opcional: crea "YT Music Downloader.app" para el Dock
+git clone <repo-url> && cd <folder>
+./run.command                       # the first time it creates the environment and installs dependencies
+.venv/bin/python make_app.py        # optional: creates "YT Music Downloader.app" for the Dock
 ```
 
-Después, doble clic en `YT Music Downloader.app` (o en `run.command`). Si mueves la carpeta del
-proyecto, vuelve a ejecutar `make_app.py`.
+Then double-click `YT Music Downloader.app` (or `run.command`). If you move the project folder,
+run `make_app.py` again.
 
 ### Windows
 
 ```bat
 winget install Python.Python.3.12 Gyan.FFmpeg OpenJS.NodeJS
-git clone <url-del-repo>
-cd <carpeta>
+git clone <repo-url>
+cd <folder>
 run.bat
 ```
 
-`run.bat` crea el entorno la primera vez y abre la app sin ventana de consola; puedes crear un
-acceso directo a él. Si tus canciones tienen nombres muy largos, activa las
-[rutas largas de Windows](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation).
+`run.bat` creates the environment the first time and opens the app without a console window; you can
+make a shortcut to it. If your songs have very long names, enable
+[Windows long paths](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation).
 
-### A mano (cualquier sistema)
+### By hand (any system)
 
 ```bash
 python -m venv .venv
@@ -41,113 +42,145 @@ python -m venv .venv
 .venv/bin/python app.py                       # Windows: .venv\Scripts\python
 ```
 
-> Probado en macOS. Windows y Linux deberían funcionar (todo el código es multiplataforma),
-> pero no se han probado: si encuentras algo, abre un issue.
+> Tested on macOS. Windows and Linux should work (all the code is cross-platform) but haven't been
+> tested: if you find anything, open an issue.
 
-El entorno `.venv` es propio de cada sistema: si compartes la carpeta entre Mac y Windows, crea
-uno en cada equipo (o usa otro nombre de carpeta para el segundo).
+The `.venv` environment belongs to each system: if you share the folder between a Mac and a Windows
+PC, create one on each machine (or use another folder name for the second).
 
-## La app
+## The app
 
-- **Inicio**: tus colecciones en cuadrícula, con filtros *Todo / Listas / Álbumes / Sueltas*.
-- **Colección**: portada grande (mosaico 2×2 en las listas, como YT Music), selector para
-  clasificarla como **Lista** o **Álbum**, reproducir, aleatorio, abrir en el explorador de archivos y
-  **Actualizar** (descarga solo las canciones nuevas de esa lista).
-- **Canciones**: todas tus canciones juntas, como una lista más (numeradas, con aleatorio y buscador).
-- **Descargas**: pega uno o varios enlaces (uno por línea) y se añaden a la **cola**.
-- **Barra inferior**: reproductor con aleatorio, repetir (todo / una) y volumen.
-  Clic en la canción para ir a su colección.
-- **Reproducir con un clic:** al pasar el ratón por una canción, su número (o portada) se convierte en ▶/⏸;
-  en el Inicio, las portadas muestran un botón de play para reproducir la colección sin abrirla.
+- **Home**: your collections as a grid, with *All / Playlists / Albums / Loose* filters.
+- **Collection**: big cover (2×2 mosaic for playlists, like YT Music), a selector to classify it as a
+  **Playlist** or an **Album**, play, shuffle, show in the file manager and **Update** (downloads only
+  the new songs of that playlist).
+- **Songs**: all your songs together, as one more list (numbered, with shuffle and search).
+- **Downloads**: the **queue** on the left and the form to add links on the right.
+- **Settings**: **language** (English or Spanish) and **updates** for the app and yt-dlp.
+- **Bottom bar**: player with shuffle, repeat (all / one) and volume. Click the song to go to its collection.
+- **One-click play:** hovering a song turns its number (or cover) into ▶/⏸; on Home, covers show a play
+  button to play the collection without opening it.
 
-Atajos: `espacio` reproduce/pausa · `Ctrl/⌘ F` buscar · `Ctrl/⌘ D` ir a Descargas.
+Shortcuts: `space` play/pause · `Ctrl/⌘ F` search · `Ctrl/⌘ D` go to Downloads.
 
-## Cola de descargas
+## Download queue
 
-- Se procesa de una en una. Cada enlace guarda las opciones que tenías al añadirlo.
-- **Pausas** (para que YouTube no te frene): espera aleatoria antes de cada canción y entre
-  enlaces. *Prudente* (3–8 s) va bien en general; para listas grandes o con cookies, *Segura* (10–20 s).
-- Si YouTube empieza a rechazar peticiones (error 429 / "confirm you're not a bot"), la cola
-  **se pausa sola**. Espera un rato, sube las pausas y reanuda: lo ya descargado se salta.
-- YouTube rechaza al azar alguna descarga suelta (HTTP 403): la app **reintenta sola** hasta
-  2 veces solo las canciones que fallaron.
-- Si cierras la app, la cola pendiente se guarda y aparece en pausa al volver a abrirla.
+- Processed one at a time. Each link keeps the options you had when you added it.
+- **Pauses** (so YouTube doesn't throttle you): a random wait before each song and between links.
+  *Careful* (3–8 s) is fine in general; for big playlists or with cookies, *Safe* (10–20 s).
+- If YouTube starts rejecting requests (error 429 / "confirm you're not a bot"), the queue **pauses
+  itself**. Wait a while, raise the pauses and resume: what's already downloaded is skipped.
+- YouTube randomly rejects an occasional download (HTTP 403): the app **retries on its own**, up to
+  2 times, only the songs that failed.
+- If you close the app, the pending queue is saved and comes back paused when you reopen it.
 
-## Importar desde tu cuenta
+## Import from your account
 
-En **Descargas → Importar desde mi cuenta** la app lee tu biblioteca de YouTube Music con la
-sesión del navegador elegido en **Cookies** (solo lectura; usa la librería no oficial
-[ytmusicapi](https://github.com/sigma67/ytmusicapi)):
+**Downloads → Import from my account** reads your YouTube Music library with the session of the browser
+chosen in **Cookies** (read-only; it uses the unofficial [ytmusicapi](https://github.com/sigma67/ytmusicapi)
+library):
 
-- Tus **listas**, públicas y privadas, y **«Música que me gusta»**.
-- Los **álbumes** guardados.
-- Marca lo que quieras y se añade a la cola. Lo que ya tienes aparece señalado.
-- Los *Recaps*, las listas de YouTube Music (`RDCLAK…`) y los mixes salen como *No compatible*:
-  YouTube no deja leerlas. Truco: añade sus canciones a una lista tuya e impórtala.
+- Your **playlists**, public and private, and **Liked Music**.
+- Your saved **albums**.
+- Tick what you want and it goes to the queue. What you already have is marked.
+- *Recaps*, YouTube Music playlists (`RDCLAK…`) and mixes show as *Not supported*: YouTube doesn't allow
+  reading them. Tip: add their songs to a playlist of your own and import that.
 
-## Sin duplicados
+## No duplicates
 
-Con **Saltar ya descargadas** activado (importar lo activa solo), antes de descargar cada
-canción se comprueba si ya la tienes: por id de vídeo y, si es otro vídeo de la misma canción
-(versión del álbum, videoclip…), por artista + título + duración. Si ya la tienes **no se
-descarga**; y si está en otra carpeta, la lista la **enlaza** (en su `.coleccion.json`), así se ve
-completa sin copiar el archivo. El índice de vídeos descargados está en `.indice.json`.
+With **Skip already downloaded** on (importing turns it on by itself), before downloading each song the
+app checks whether you already have it: by video id and, if it's another video of the same song (album
+version, music video…), by artist + title + duration. If you already have it, it is **not downloaded**;
+and if it's in another folder, the playlist **links** it (in its `.coleccion.json`), so it shows up
+complete without copying the file. The index of downloaded videos is in `.indice.json`.
 
-## Clasificación (listas y álbumes)
+## Classification (playlists and albums)
 
-Al descargar se detecta solo: los enlaces de álbum (`/browse/MPRE…` o listas `OLAK5uy_…`)
-son **Álbum** y van a una carpeta `Artista - Álbum`; el resto son **Lista**. Puedes cambiarlo
-con el selector de la colección. Se guarda en un `.coleccion.json` dentro de la carpeta,
-así viaja con las canciones.
+It's detected when downloading: album links (`/browse/MPRE…` or `OLAK5uy_…` lists) are **Albums** and go to
+an `Artist - Album` folder; everything else is a **Playlist**. You can change it with the selector on the
+collection. It's stored in a `.coleccion.json` inside the folder, so it travels with the songs.
 
 ```
 ~/Music/YT Music/
-    Artista - Canción.flac              ← canciones sueltas
-    Radiohead - In Rainbows/            ← álbum
+    Artist - Song.flac                  ← loose songs
+    Radiohead - In Rainbows/            ← album
         .coleccion.json
         cover.jpg
         01 - Radiohead - 15 Step.flac
-    Mi lista/                           ← lista
-        001 - Artista - Canción.flac    (3 cifras si tiene 100+ canciones)
+    My playlist/                        ← playlist
+        001 - Artist - Song.flac        (3 digits if it has 100+ songs)
 ```
 
-## Formatos
+## Formats
 
-| Formato | Para qué | Portada |
+| Format | What it's for | Cover art |
 |---|---|---|
-| **FLAC** | Sin pérdida, etiquetas completas. Recomendado si tu decodificador lo soporta | Incrustada |
-| **WAV** | PCM puro: lo más fácil en un microcontrolador (directo a un DAC I2S) | `.jpg` aparte |
-| **MP3 320** | Máxima compatibilidad (DFPlayer Mini, VS1003/1053…) | Incrustada |
-| **Original** | El Opus/AAC tal cual lo sirve YouTube, sin tocar | Incrustada |
+| **FLAC** | Lossless, full tags. Recommended if your decoder supports it | Embedded |
+| **WAV** | Raw PCM: the easiest on a microcontroller (straight to an I2S DAC) | Separate `.jpg` |
+| **MP3 320** | Maximum compatibility (DFPlayer Mini, VS1003/1053…) | Embedded |
+| **Original** | The Opus/AAC exactly as YouTube serves it, untouched | Embedded |
 
-**Máxima calidad:** YouTube Music ya sirve el audio comprimido (Opus ~130 kbps). Con
-**Cookies** = tu navegador y una cuenta Premium se desbloquea AAC 256 kbps; el registro muestra
-la calidad de origen de cada canción (`origen: … kbps`). Las cookies también permiten bajar tus
-listas privadas y "Música que me gusta" (`https://music.youtube.com/playlist?list=LM`).
+**Best quality:** YouTube Music already serves compressed audio (Opus ~130 kbps). With **Cookies** = your
+browser and a Premium account, AAC 256 kbps is unlocked; the log shows each song's source quality
+(`source: … kbps`). Cookies also let you download your private playlists and "Liked Music"
+(`https://music.youtube.com/playlist?list=LM`).
 
-## Opciones
+## Options
 
-- **44.1 kHz / 16 bit**: calidad CD, lo más compatible con DACs y decodificadores (no afecta a "Original").
-- **Nombres solo ASCII**: sin tildes ni espacios, por si tu firmware lee la SD sin nombres largos.
-- **Portada .jpg aparte**: además de incrustarla, deja la portada como fichero junto a la canción.
-- **Saltar ya descargadas**: registro en `.descargadas.txt` para no repetir canciones.
+- **44.1 kHz / 16 bit**: CD quality, the most compatible with DACs and decoders (doesn't affect "Original").
+- **ASCII-only names**: no accents or spaces, in case your firmware reads the SD card without long names.
+- **Cover as separate .jpg**: besides embedding it, leaves the cover as a file next to the song.
+- **Skip already downloaded**: log in `.descargadas.txt` so songs aren't repeated.
 
-## Si deja de funcionar
+## Language
 
-YouTube cambia a menudo; casi siempre se arregla actualizando yt-dlp:
+The app is in **English by default**. **Settings → Language** switches it to Spanish; the app restarts to
+apply it (if there were downloads in the queue, they're kept, paused).
+
+## Updates
+
+Everything is in **Settings → Updates**:
+
+- **Check for updates** looks at the latest [Release](../../releases) of the repository. When you open the
+  app it does so on its own, at most once a day, and if there's a newer version it shows a banner at the top
+  (**See what's new**, **Update**, **Not now**). It only makes one public request to GitHub; nothing about
+  you is sent.
+- **Updating to the new version:** if you installed the app with `git clone`, the button runs `git pull`
+  (clean fast-forward only: it won't overwrite your own changes) and reinstalls the dependencies if they
+  changed. Then press **Restart now**. If you downloaded the ZIP, the button takes you to the release page
+  to download it and replace the folder; your settings and your music are kept.
+- **Update yt-dlp:** use it if downloads stop working (YouTube changes often and yt-dlp updates faster than
+  this app). Restart the app afterwards.
+
+### For whoever publishes versions
+
+1. Bump the number in `version.py` (`__version__`).
+2. Commit and create a tag with the same number: `git tag v1.1.0 && git push --tags`.
+3. On GitHub, *Releases → Draft a new release*, pick that tag and write what changed.
+4. Check that `GITHUB_REPO` in `version.py` points to your repository (`user/name`). While it's empty, the
+   app doesn't look for new versions.
+
+## Translations
+
+The texts live in `i18n_<language>.py` (key = the English text in the code). To add a language: copy
+`i18n_es.py`, translate it, add the language to `LANGUAGES` in `i18n.py` and run
+`python tools/check_i18n.py`, which reports missing or extra texts.
+
+## If it stops working
+
+YouTube changes often; it's almost always fixed by updating yt-dlp (**Settings → Update yt-dlp**), or:
 
 ```bash
 uv pip install --python .venv/bin/python -U "yt-dlp[default]"
 ```
 
-## Aviso legal
+## Legal notice
 
-Descargar contenido de YouTube puede incumplir sus [condiciones de servicio](https://www.youtube.com/t/terms)
-y los derechos de autor de la música. Esta herramienta está pensada para uso personal con contenido
-que tengas derecho a descargar (tu propia música, licencias libres, copias de seguridad de lo que
-ya posees). Eres el único responsable del uso que hagas de ella. No está afiliada a YouTube ni a
-Google. Se apoya en [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+Downloading content from YouTube may breach its [terms of service](https://www.youtube.com/t/terms) and the
+copyright of the music. This tool is meant for personal use with content you have the right to download (your
+own music, free licenses, backups of what you already own). You alone are responsible for how you use it. It
+is not affiliated with YouTube or Google. It relies on [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
-## Licencia
+## License
 
 [MIT](LICENSE)

@@ -7,8 +7,14 @@ import sys
 import qtawesome as qta
 from PySide6.QtGui import QColor, QFont
 
-# Nombre del explorador de archivos del sistema, para los textos de la interfaz
-FILE_MANAGER = {"darwin": "Finder", "win32": "el Explorador"}.get(sys.platform, "el gestor de archivos")
+from i18n import tr
+
+
+
+def file_manager() -> str:
+    """Nombre del explorador de archivos del sistema, para los textos de la interfaz."""
+    return {"darwin": "Finder", "win32": tr("Explorer")}.get(sys.platform, tr("the file manager"))
+
 
 BG = "#030303"
 SIDEBAR = "#0a0a0a"
@@ -131,6 +137,10 @@ QTreeWidget::item:selected {{ background: rgba(255,255,255,0.12); color: {TEXT};
 QTreeWidget::item:disabled {{ color: #666666; }}
 QHeaderView::section {{ background: transparent; color: {MUTED}; border: none;
     border-bottom: 1px solid #333; padding: 6px 4px; font-weight: 600; }}
+
+/* ---- banner de versión nueva ---- */
+#banner {{ background: #1f2a44; border-radius: 0; }}
+#banner QLabel {{ color: {TEXT}; }}
 
 /* ---- tarjetas y cola ---- */
 #panel {{ background: rgba(255,255,255,0.05); border-radius: 12px; }}

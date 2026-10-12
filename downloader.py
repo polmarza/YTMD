@@ -20,24 +20,54 @@ from yt_dlp.utils import sanitize_filename
 
 import library
 from browser_cookies import cookie_source
+from i18n import tr, trn
 
-# nombre visible -> (códec para FFmpegExtractAudio, calidad)
+# Los ajustes guardan ids estables (no el texto visible, que cambia con el idioma).
+# id -> (códec para FFmpegExtractAudio, calidad)
 FORMATS: dict[str, tuple[str, str]] = {
-    "FLAC (sin pérdida)": ("flac", "0"),
-    "WAV (PCM sin comprimir)": ("wav", "0"),
-    "MP3 320 kbps": ("mp3", "320"),
-    "Original (sin recodificar)": ("best", "0"),
+    "flac": ("flac", "0"),
+    "wav": ("wav", "0"),
+    "mp3": ("mp3", "320"),
+    "original": ("best", "0"),
 }
 
-BROWSERS = ["Ninguno", "chrome", "firefox", "brave", "edge"] + (["safari"] if sys.platform == "darwin" else [])
+NO_BROWSER = "none"
+BROWSERS = [NO_BROWSER, "chrome", "firefox", "brave", "edge"] + (["safari"] if sys.platform == "darwin" else [])
 
 # Pausas para no parecer un bot: (mín, máx) segundos aleatorios antes de cada canción,
 # y pausa entre peticiones de información.
 PAUSES: dict[str, tuple[float, float, float]] = {
-    "Sin pausa": (0, 0, 0),
-    "Prudente (3–8 s)": (3, 8, 0.5),
-    "Segura (10–20 s)": (10, 20, 1),
+    "off": (0, 0, 0),
+    "careful": (3, 8, 0.5),
+    "safe": (10, 20, 1),
 }
+DEFAULT_FORMAT, DEFAULT_PAUSE = "flac", "careful"
+
+
+def format_label(fid: str) -> str:
+    return {"flac": tr("FLAC (lossless)"), "wav": tr("WAV (uncompressed PCM)"), "mp3": "MP3 320 kbps",
+            "original": tr("Original (no re-encoding)")}[fid]
+
+
+def pause_label(pid: str) -> str:
+    return {"off": tr("No pauses"), "careful": tr("Careful (3–8 s)"), "safe": tr("Safe (10–20 s)")}[pid]
+
+
+def browser_label(bid: str) -> str:
+    return tr("None") if bid == NO_BROWSER else bid.capitalize()
+
+
+# Valores que guardaban las versiones anteriores (texto en español) -> id actual
+_LEGACY = {
+    "FLAC (sin pérdida)": "flac", "WAV (PCM sin comprimir)": "wav", "MP3 320 kbps": "mp3",
+    "Original (sin recodificar)": "original", "Sin pausa": "off", "Prudente (3–8 s)": "careful",
+    "Segura (10–20 s)": "safe", "Ninguno": NO_BROWSER,
+}
+
+
+def migrate(value):
+    """Convierte un ajuste guardado con el texto antiguo a su id; los ids actuales no cambian."""
+    return _LEGACY.get(value, value)
 
 # YouTube rechaza al azar algunas descargas (HTTP 403); se reintentan solo las que fallan.
 RETRY_PASSES = 2
@@ -89,9 +119,9 @@ class CleanTitlePP(PostProcessor):
 @dataclass
 class Options:
     out_dir: str
-    format_name: str = "FLAC (sin pérdida)"
-    browser: str = "Ninguno"
-    pause: str = "Prudente (3–8 s)"
+    format_name: str = DEFAULT_FORMAT     # id de FORMATS
+    browser: str = NO_BROWSER
+    pause: str = DEFAULT_PAUSE            # id de PAUSES
     compat_44k: bool = True       # 44.1 kHz / 16 bit: lo más compatible con DACs y decoders
     ascii_names: bool = False     # nombres seguros para librerías SD sin nombres largos
     cover_file: bool = True       # guardar también la portada como .jpg al lado
@@ -159,22 +189,22 @@ class Downloader:
             name = _clean(f"{info.get('artist') or info.get('uploader') or ''} - "
                           f"{info.get('track') or info.get('title') or vid}").strip(" -")
             self.cb.item(self._index, self._total, name)
-            self.cb.log(f"   origen: {info.get('acodec')} · {info.get('abr') or '?'} kbps"
-                        f" · {info.get('format_note') or info.get('format_id')}")
+            self.cb.log(tr("   source: {codec} · {abr} kbps · {note}", codec=info.get("acodec"),
+                           abr=info.get("abr") or "?", note=info.get("format_note") or info.get("format_id")))
         if d["status"] == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             got = d.get("downloaded_bytes") or 0
             pct = (got / total * 100) if total else 0
             speed = d.get("_speed_str", "").strip()
-            self.cb.progress(pct, f"Descargando… {speed}")
+            self.cb.progress(pct, tr("Downloading… {speed}", speed=speed))
         elif d["status"] == "finished":
-            self.cb.progress(100, "Convirtiendo y etiquetando…")
+            self.cb.progress(100, tr("Converting and tagging…"))
 
     def _skipped(self, name):
         self._index += 1
         self.cb.item(self._index, self._total, name)
         if not self._retrying:  # en los reintentos, saltar lo ya bajado es lo esperado
-            self.cb.log("↷ Ya descargada, se salta: " + name)
+            self.cb.log(tr("↷ Already downloaded, skipping: {name}", name=name))
 
     def _pp_hook(self, d):
         if self._cancel.is_set():
@@ -197,7 +227,7 @@ class Downloader:
 
     def _logger(self):
         return _Logger(self.cb.log, self._on_error, self._skipped,
-                       lambda secs: self.cb.progress(0, f"Pausa anti-bloqueo: {secs:.0f} s…"))
+                       lambda secs: self.cb.progress(0, tr("Anti-block pause: {secs} s…", secs=f"{secs:.0f}")))
 
     # ---------- opciones ----------
     def _ydl_opts(self, dest: str, is_playlist: bool, width: int, archive: str) -> dict:
@@ -236,7 +266,7 @@ class Downloader:
         if codec != "wav":  # WAV no admite portada incrustada: queda como .jpg al lado
             pps.append({"key": "EmbedThumbnail", "already_have_thumbnail": o.cover_file})
 
-        sleep_min, sleep_max, sleep_req = PAUSES.get(o.pause, PAUSES["Prudente (3–8 s)"])
+        sleep_min, sleep_max, sleep_req = PAUSES.get(o.pause, PAUSES[DEFAULT_PAUSE])
         ydl = {
             # 141 = AAC 256 kbps (solo con Premium); si no, el mejor audio disponible.
             "format": "141/bestaudio/best",
@@ -266,7 +296,7 @@ class Downloader:
             ydl.update(sleep_interval=sleep_min, max_sleep_interval=sleep_max,
                        sleep_interval_requests=sleep_req)
         ydl["download_archive"] = archive
-        if o.browser != "Ninguno":
+        if o.browser != NO_BROWSER:
             ydl["cookiesfrombrowser"] = cookie_source(o.browser)
         return ydl
 
@@ -293,14 +323,14 @@ class Downloader:
         probe = {"extract_flat": "in_playlist", "quiet": True, "logger": self._logger(),
                  "js_runtimes": {"deno": {}, "node": {}}, "extractor_retries": 5,
                  "noplaylist": "list=" not in url or "v=" in url}
-        if self.opts.browser != "Ninguno":
+        if self.opts.browser != NO_BROWSER:
             probe["cookiesfrombrowser"] = cookie_source(self.opts.browser)
 
-        self.cb.log(f"Analizando {url}")
+        self.cb.log(tr("Analyzing {url}", url=url))
         with yt_dlp.YoutubeDL(probe) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
-            raise RuntimeError("No se pudo leer el enlace (¿privado? prueba con cookies).")
+            raise RuntimeError(tr("Couldn't read the link (private? try with cookies)."))
         self.result.errors = 0  # los avisos del análisis no cuentan como canciones fallidas
 
         kind = detect_kind(info, url)
@@ -317,7 +347,7 @@ class Downloader:
             if have:
                 self.result.already = 1
                 self.cb.info(title, 1, kind)
-                self.cb.log(f"↷ Ya la tienes: {have}")
+                self.cb.log(tr("↷ You already have it: {path}", path=have))
                 return self.result
         else:
             entries = list(info.get("entries") or [])
@@ -331,13 +361,14 @@ class Downloader:
                 "id": info.get("id"),
             }, overwrite=False)
             self.result.folder = dest
-            label = "Álbum" if kind == "album" else "Lista"
-            self.cb.log(f"{label} «{title}» · {self._total} canciones")
+            songs = trn(self._total, "{n} song", "{n} songs")
+            self.cb.log(tr("Album «{title}» · {songs}" if kind == "album" else "Playlist «{title}» · {songs}",
+                           title=title, songs=songs))
             if matcher:
                 items = self._skip_known(entries, matcher, dest)
                 if not items:
                     self.cb.info(title, self._total, kind)
-                    self.cb.log("↷ Ya tenías todas las canciones: no hay nada que descargar.")
+                    self.cb.log(tr("↷ You already had every song: nothing to download."))
                     return self.result
         self.cb.info(title, self._total, kind)
         if items is not None:
@@ -365,9 +396,9 @@ class Downloader:
                 r = self.result
                 if r.cancelled or r.blocked or not r.errors or attempt == RETRY_PASSES:
                     break
-                self.cb.log(f"↻ {r.errors} canción(es) fallaron (YouTube a veces responde 403). "
-                            f"Reintento {attempt + 1}/{RETRY_PASSES} en {RETRY_WAIT} s…")
-                self.cb.progress(0, f"Reintentando {r.errors} que fallaron…")
+                self.cb.log(tr("↻ {n} song(s) failed (YouTube sometimes answers 403). Retry {k}/{total} in {secs} s…",
+                               n=r.errors, k=attempt + 1, total=RETRY_PASSES, secs=RETRY_WAIT))
+                self.cb.progress(0, tr("Retrying the {n} that failed…", n=r.errors))
                 if self._cancel.wait(RETRY_WAIT):
                     self.result.cancelled = True
                     break
@@ -375,7 +406,7 @@ class Downloader:
             if tmp:
                 os.unlink(tmp)
         if self.result.cancelled:
-            self.cb.log("Cancelado.")
+            self.cb.log(tr("Cancelled."))
         return self.result
 
     def _skip_known(self, entries: list, matcher: "library.Matcher", dest: str) -> list[int]:
@@ -400,8 +431,10 @@ class Downloader:
         if refs:
             library.add_refs(dest, refs)
         if self.result.already:
-            self.cb.log(f"↷ {self.result.already} ya las tenías: no se descargan otra vez"
-                        + (f" ({len(refs)} enlazadas desde otras carpetas)" if refs else ""))
+            msg = tr("↷ {n} already in your library: not downloaded again", n=self.result.already)
+            if refs:
+                msg += tr(" ({n} linked from other folders)", n=len(refs))
+            self.cb.log(msg)
         return todo
 
     def _download(self, url: str, ydl_opts: dict):

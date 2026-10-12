@@ -1,4 +1,4 @@
-"""Genera icon.png y 'YT Music Downloader.app' (lanzador de doble clic). Ejecutar una vez."""
+"""Generates icon.png and 'YT Music Downloader.app' (a double-click launcher). Run it once."""
 import os, plistlib, shutil, stat, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +27,7 @@ def make_icon(path):
 
 def main():
     if sys.platform != "darwin":
-        sys.exit("make_app.py solo sirve en macOS. En Windows usa run.bat.")
+        sys.exit("make_app.py only works on macOS. On Windows use run.bat.")
     icon_png = os.path.join(HERE, "icon.png")
     make_icon(icon_png)
 
@@ -53,11 +53,11 @@ def main():
 DIR={HERE!r}
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 if [ ! -d "$DIR" ]; then
-  osascript -e 'display alert "No encuentro la carpeta del proyecto" message "¿Está conectado el disco SAMSUNG 4TB?"'
+  osascript -e 'display alert "Cannot find the project folder" message "Is the drive it lives on connected?"'
   exit 1
 fi
 cd "$DIR"
-if [ ! -x .venv/bin/python ]; then      # primera vez: que se vea la instalación
+if [ ! -x .venv/bin/python ]; then      # first run: show the installation
   exec open -a Terminal "$DIR/run.command"
 fi
 exec .venv/bin/python app.py

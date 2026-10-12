@@ -1,10 +1,10 @@
-"""Páginas principales: Inicio, Colección (también la de todas las canciones) y Descargas."""
+"""Páginas principales: Inicio, Colección (también la de todas las canciones), Descargas y Configuración."""
 from __future__ import annotations
 
 import os
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QLinearGradient, QPainter
+from PySide6.QtGui import QAction, QColor, QFont, QLinearGradient, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QListView, QListWidget, QListWidgetItem, QMenu, QPlainTextEdit,
@@ -12,7 +12,9 @@ from PySide6.QtWidgets import (
 )
 
 import library
-from downloader import BROWSERS, FORMATS, PAUSES
+import i18n
+from downloader import BROWSERS, FORMATS, PAUSES, browser_label, format_label, pause_label
+from i18n import tr, trn
 from ui import style
 from ui.covers import Covers
 from ui.widgets import LEAD_W, LEAD_X, ROLE, CardDelegate, QueueRow, TrackDelegate, fmt_long, icon_button
@@ -107,8 +109,8 @@ class TrackList(QListWidget):
         if not it:
             return
         m = QMenu(self)
-        m.addAction("Reproducir", lambda: self._play(it))
-        m.addAction(f"Mostrar en {style.FILE_MANAGER}", lambda: self.reveal_requested.emit(it.data(ROLE).path))
+        m.addAction(tr("Play"), lambda: self._play(it))
+        m.addAction(tr("Show in {app}", app=style.file_manager()), lambda: self.reveal_requested.emit(it.data(ROLE).path))
         m.exec(self.viewport().mapToGlobal(pos))
 
 
@@ -154,8 +156,6 @@ class HomePage(QWidget):
     open_collection = Signal(object)
     play_collection = Signal(object)
 
-    FILTERS = [("Todo", None), ("Listas", "playlist"), ("Álbumes", "album"), ("Sueltas", "singles")]
-
     def __init__(self, covers: Covers):
         super().__init__()
         self.kind_filter = None
@@ -163,7 +163,7 @@ class HomePage(QWidget):
         lay.setContentsMargins(40, 20, 28, 0)
         lay.setSpacing(16)
 
-        self.search = search_box("Buscar en tus listas, álbumes y artistas")
+        self.search = search_box(tr("Search your playlists, albums and artists"))
         self.search.setMaximumWidth(480)
         self.search.textChanged.connect(self.apply_filter)
         lay.addWidget(self.search)
@@ -171,7 +171,9 @@ class HomePage(QWidget):
         chips = QHBoxLayout()
         chips.setSpacing(10)
         self.group = QButtonGroup(self)
-        for i, (label, kind) in enumerate(self.FILTERS):
+        filters = [(tr("All"), None), (tr("Playlists"), "playlist"), (tr("Albums"), "album"),
+                   (tr("Loose"), "singles")]
+        for i, (label, kind) in enumerate(filters):
             b = QPushButton(label, objectName="chip", checkable=True)
             b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(lambda _=False, k=kind: self._set_kind(k))
@@ -181,8 +183,8 @@ class HomePage(QWidget):
         chips.addStretch(1)
         lay.addLayout(chips)
 
-        lay.addWidget(QLabel("Tu biblioteca", objectName="h1"))
-        self.empty = QLabel("Aún no hay nada. Ve a <b>Descargas</b> y pega un enlace de YouTube Music.",
+        lay.addWidget(QLabel(tr("Your library"), objectName="h1"))
+        self.empty = QLabel(tr("Nothing here yet. Go to <b>Downloads</b> and paste a YouTube Music link."),
                             objectName="muted")
         lay.addWidget(self.empty)
 
@@ -230,8 +232,6 @@ class CollectionPage(QWidget):
     update_requested = Signal(object)
     reveal_requested = Signal(str)
 
-    KIND_CHOICES = [("playlist", "Lista"), ("album", "Álbum")]
-
     def __init__(self, covers: Covers):
         super().__init__()
         self.covers = covers
@@ -255,9 +255,9 @@ class CollectionPage(QWidget):
 
         # El selector para clasificar: lista o álbum
         self.kind = QComboBox()
-        for key, label in self.KIND_CHOICES:
+        for key, label in (("playlist", tr("Playlist")), ("album", tr("Album"))):
             self.kind.addItem(label, key)
-        self.kind.setToolTip("Clasifica esta colección como lista o como álbum")
+        self.kind.setToolTip(tr("Classify this collection as a playlist or an album"))
         self.kind.activated.connect(self._kind_activated)
         left.addWidget(self.kind, 0, Qt.AlignHCenter)
 
@@ -271,13 +271,13 @@ class CollectionPage(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(16)
         self.btn_update = icon_button("sync", 44, 22, "roundbtn",
-                                      "Actualizar: descarga solo las canciones nuevas de la lista")
+                                      tr("Update: downloads only the new songs of the playlist"))
         self.btn_update.clicked.connect(lambda: self.col and self.update_requested.emit(self.col))
-        self.btn_play = icon_button("play", 64, 40, "bigplay", "Reproducir", color="#000000")
+        self.btn_play = icon_button("play", 64, 40, "bigplay", tr("Play"), color="#000000")
         self.btn_play.clicked.connect(lambda: self.play_requested.emit(self.tracks.visible_tracks(), 0))
-        self.btn_shuffle = icon_button("shuffle-variant", 44, 22, "roundbtn", "Aleatorio")
+        self.btn_shuffle = icon_button("shuffle-variant", 44, 22, "roundbtn", tr("Shuffle"))
         self.btn_shuffle.clicked.connect(lambda: self.shuffle_requested.emit(self.tracks.visible_tracks()))
-        self.btn_folder = icon_button("folder-open-outline", 44, 22, "roundbtn", f"Mostrar en {style.FILE_MANAGER}")
+        self.btn_folder = icon_button("folder-open-outline", 44, 22, "roundbtn", tr("Show in {app}", app=style.file_manager()))
         self.btn_folder.clicked.connect(lambda: self.col and self.reveal_requested.emit(self.col.path))
         for b in (self.btn_update, self.btn_play, self.btn_shuffle, self.btn_folder):
             actions.addWidget(b)
@@ -286,7 +286,7 @@ class CollectionPage(QWidget):
 
         right = QVBoxLayout()
         right.setSpacing(10)
-        self.search = search_box("Buscar en esta colección")
+        self.search = search_box(tr("Search this collection"))
         self.search.setMaximumWidth(360)
         right.addWidget(self.search)
         self.tracks = TrackList(covers)
@@ -306,15 +306,15 @@ class CollectionPage(QWidget):
         if c.kind == "album":
             sub = " • ".join(x for x in (c.artist, c.year) if x)
         elif c.kind == "playlist":
-            sub = " • ".join(x for x in (c.artist and f"de {c.artist}", c.year) if x)
+            sub = " • ".join(x for x in (c.artist and tr("by {artist}", artist=c.artist), c.year) if x)
         elif c.kind == "all":
-            sub = "Toda tu biblioteca"
+            sub = tr("Your whole library")
         else:
-            sub = "Canciones descargadas sueltas"
+            sub = tr("Songs downloaded on their own")
         self.sub.setText(sub)
         self.sub.setVisible(bool(sub))
         n = len(c.tracks)
-        self.stats.setText(f"{n} pista{'s' if n != 1 else ''} • {fmt_long(c.duration)}")
+        self.stats.setText(f"{trn(n, '{n} track', '{n} tracks')} • {fmt_long(c.duration)}")
         self.btn_update.setVisible(bool(c.url))
         self.tracks.delegate.numbered = c.kind in ("album", "all")
         self.tracks.delegate.full_sub = c.kind == "all"      # artista • álbum en la lista conjunta
@@ -355,13 +355,13 @@ class DownloadsPage(QWidget):
         lay.setSpacing(16)
 
         head = QHBoxLayout()
-        head.addWidget(QLabel("Descargas", objectName="h1"))
+        head.addWidget(QLabel(tr("Downloads"), objectName="h1"))
         head.addStretch(1)
-        self.btn_import = QPushButton("  Importar desde mi cuenta", objectName="accent")
+        self.btn_import = QPushButton("  " + tr("Import from my account"), objectName="accent")
         self.btn_import.setIcon(style.icon("account-music"))
         self.btn_import.setCursor(Qt.PointingHandCursor)
-        self.btn_import.setToolTip("Elige listas (también privadas), «Música que me gusta» y álbumes "
-                                   "guardados de tu YouTube Music. Usa el navegador de «Cookies».")
+        self.btn_import.setToolTip(tr("Choose playlists (private ones too), Liked Music and saved albums "
+                                      "from your YouTube Music. Uses the browser selected in «Cookies»."))
         self.btn_import.clicked.connect(self.import_requested)
         head.addWidget(self.btn_import)
         lay.addLayout(head)
@@ -386,15 +386,15 @@ class DownloadsPage(QWidget):
         col = QVBoxLayout()
         col.setSpacing(12)
         head = QHBoxLayout()
-        head.addWidget(QLabel("Cola", objectName="h2"))
+        head.addWidget(QLabel(tr("Queue"), objectName="h2"))
         self.lbl_queue = QLabel(objectName="muted")
         self.lbl_queue.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         head.addWidget(self.lbl_queue, 1)
-        self.btn_pause = QPushButton("Pausar")
+        self.btn_pause = QPushButton(tr("Pause"))
         self.btn_pause.setCheckable(True)
         self.btn_pause.toggled.connect(self._pause)
-        self.btn_clear = QPushButton("Limpiar")
-        self.btn_clear.setToolTip("Quita de la lista las descargas terminadas o canceladas")
+        self.btn_clear = QPushButton(tr("Clear"))
+        self.btn_clear.setToolTip(tr("Removes finished or cancelled downloads from the list"))
         self.btn_clear.clicked.connect(self.clear_finished)
         head.addWidget(self.btn_pause)
         head.addWidget(self.btn_clear)
@@ -409,14 +409,14 @@ class DownloadsPage(QWidget):
         self.queue_box = QVBoxLayout(box)
         self.queue_box.setContentsMargins(0, 0, 6, 0)
         self.queue_box.setSpacing(8)
-        self.queue_empty = QLabel("La cola está vacía. Añade enlaces con el formulario o importa "
-                                  "desde tu cuenta.", objectName="muted", wordWrap=True)
+        self.queue_empty = QLabel(tr("The queue is empty. Add links with the form or import from your "
+                                     "account."), objectName="muted", wordWrap=True)
         self.queue_box.addWidget(self.queue_empty)
         self.queue_box.addStretch(1)
         self._rows = 0
         col.addWidget(area, 1)
 
-        self.btn_log = QPushButton("Mostrar registro")
+        self.btn_log = QPushButton(tr("Show log"))
         self.btn_log.setCheckable(True)
         self.btn_log.setStyleSheet("text-align: left; background: transparent; color: #aaa; padding-left: 0;")
         self.log = QPlainTextEdit(readOnly=True)
@@ -424,7 +424,7 @@ class DownloadsPage(QWidget):
         self.log.setVisible(False)
         self.log.setMaximumBlockCount(3000)
         self.btn_log.toggled.connect(lambda on: (self.log.setVisible(on),
-                                                 self.btn_log.setText("Ocultar registro" if on else "Mostrar registro")))
+                                                 self.btn_log.setText(tr("Hide log") if on else tr("Show log"))))
         col.addWidget(self.btn_log, 0, Qt.AlignLeft)
         col.addWidget(self.log)
         return col
@@ -435,49 +435,53 @@ class DownloadsPage(QWidget):
         pl = QVBoxLayout(panel)
         pl.setContentsMargins(20, 18, 20, 20)
         pl.setSpacing(12)
-        pl.addWidget(QLabel("Añadir enlaces", objectName="h2"))
+        pl.addWidget(QLabel(tr("Add links"), objectName="h2"))
 
         self.urls = QPlainTextEdit()
         self.urls.setPlaceholderText(
-            "Pega uno o varios enlaces de YouTube Music, uno por línea: canciones, álbumes o "
-            "listas (también las tuyas privadas, con cookies).")
+            tr("Paste one or more YouTube Music links, one per line: songs, albums or "
+               "playlists (your private ones too, with cookies)."))
         self.urls.setMinimumHeight(96)
         pl.addWidget(self.urls, 1)
 
+        # Los desplegables guardan ids estables (itemData); el texto cambia con el idioma.
         self.cmb_format = QComboBox()
-        self.cmb_format.addItems(FORMATS.keys())
+        for fid in FORMATS:
+            self.cmb_format.addItem(format_label(fid), fid)
         self.cmb_format.setToolTip(
-            "FLAC: sin pérdida y con portada/etiquetas (recomendado).\n"
-            "WAV: PCM puro, el más fácil de decodificar en un microcontrolador; portada como .jpg aparte.\n"
-            "MP3 320: máxima compatibilidad (DFPlayer, VS1053…), pero recodifica con pérdida.\n"
-            "Original: el Opus/AAC tal cual lo sirve YouTube, sin tocar.")
+            tr("FLAC: lossless, with cover art and tags (recommended).") + "\n" +
+            tr("WAV: raw PCM, the easiest to decode on a microcontroller; cover art as a separate .jpg.") + "\n" +
+            tr("MP3 320: maximum compatibility (DFPlayer, VS1053…), but re-encodes with loss.") + "\n" +
+            tr("Original: the Opus/AAC exactly as YouTube serves it, untouched."))
         self.cmb_browser = QComboBox()
-        self.cmb_browser.addItems(BROWSERS)
+        for bid in BROWSERS:
+            self.cmb_browser.addItem(browser_label(bid), bid)
         self.cmb_browser.setToolTip(
-            "Usa la sesión de YouTube Music de ese navegador.\n"
-            "Con Premium desbloquea AAC 256 kbps y permite bajar tus listas privadas.")
+            tr("Uses the YouTube Music session of that browser.") + "\n" +
+            tr("With Premium it unlocks AAC 256 kbps and lets you download your private playlists."))
         self.cmb_pause = QComboBox()
-        self.cmb_pause.addItems(PAUSES.keys())
+        for pid in PAUSES:
+            self.cmb_pause.addItem(pause_label(pid), pid)
         self.cmb_pause.setToolTip(
-            "Espera aleatoria antes de cada canción para que YouTube no te frene.\n"
-            "Para listas grandes o si usas cookies de tu cuenta, mejor «Segura».")
+            tr("Random wait before each song so YouTube doesn't throttle you.") + "\n" +
+            tr("For big playlists, or if you use your account's cookies, «Safe» is better."))
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(10)
         grid.setColumnStretch(1, 1)
-        for r, (label, w) in enumerate((("Formato", self.cmb_format), ("Cookies", self.cmb_browser),
-                                         ("Pausas", self.cmb_pause))):
+        for r, (label, w) in enumerate(((tr("Format"), self.cmb_format), (tr("Cookies"), self.cmb_browser),
+                                         (tr("Pauses"), self.cmb_pause))):
             grid.addWidget(QLabel(label, objectName="muted"), r, 0)
             grid.addWidget(w, r, 1)
         pl.addLayout(grid)
 
         self.chk_44k = QCheckBox("44.1 kHz / 16 bit")
-        self.chk_44k.setToolTip("Formato de CD: el más compatible con DACs I2S y decodificadores.")
-        self.chk_ascii = QCheckBox("Nombres solo ASCII")
-        self.chk_ascii.setToolTip("Sin tildes, ñ ni espacios: por si tu firmware lee la SD sin nombres largos.")
-        self.chk_cover = QCheckBox("Portada .jpg aparte")
-        self.chk_skip = QCheckBox("Saltar ya descargadas")
-        self.chk_skip.setToolTip("No vuelve a bajar lo que ya tienes (ni otro vídeo de la misma canción).")
+        self.chk_44k.setToolTip(tr("CD format: the most compatible with I2S DACs and decoders."))
+        self.chk_ascii = QCheckBox(tr("ASCII-only names"))
+        self.chk_ascii.setToolTip(tr("No accents, ñ or spaces: in case your firmware reads the SD card without long names."))
+        self.chk_cover = QCheckBox(tr("Cover as separate .jpg"))
+        self.chk_skip = QCheckBox(tr("Skip already downloaded"))
+        self.chk_skip.setToolTip(tr("Doesn't download again what you already have (nor another video of the same song)."))
         checks = QVBoxLayout()
         checks.setSpacing(8)
         for w in (self.chk_44k, self.chk_ascii, self.chk_cover, self.chk_skip):
@@ -486,12 +490,12 @@ class DownloadsPage(QWidget):
 
         pl.addWidget(QFrame(objectName="sep"))
         row = QHBoxLayout()
-        row.addWidget(QLabel("Carpeta", objectName="muted"))
+        row.addWidget(QLabel(tr("Folder"), objectName="muted"))
         row.addStretch(1)
-        b = QPushButton("Cambiar…")
+        b = QPushButton(tr("Change…"))
         b.clicked.connect(self.choose_dir)
         row.addWidget(b)
-        b = QPushButton("Abrir")
+        b = QPushButton(tr("Open"))
         b.clicked.connect(self.open_dir)
         row.addWidget(b)
         pl.addLayout(row)
@@ -501,12 +505,13 @@ class DownloadsPage(QWidget):
         self.lbl_dir.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         pl.addWidget(self.lbl_dir)
 
-        self.btn_add = QPushButton("Añadir a la cola", objectName="primary")
+        self.btn_add = QPushButton(tr("Add to queue"), objectName="primary")
         self.btn_add.setIcon(style.icon("plus", "#000000"))
         self.btn_add.setCursor(Qt.PointingHandCursor)
         self.btn_add.clicked.connect(self._add)
         pl.addSpacing(4)
         pl.addWidget(self.btn_add)
+
         return panel
 
     def set_dir(self, path: str):
@@ -522,10 +527,10 @@ class DownloadsPage(QWidget):
             self.urls.clear()
         bad = len(urls) - len(good)
         if bad:
-            self.add_log(f"⚠ Ignorados {bad} enlaces que no son de YouTube.")
+            self.add_log(tr("⚠ Ignored {n} links that aren't from YouTube.", n=bad))
 
     def _pause(self, on: bool):
-        self.btn_pause.setText("Reanudar" if on else "Pausar")
+        self.btn_pause.setText(tr("Resume") if on else tr("Pause"))
         self.pause_toggled.emit(on)
 
     def add_row(self, row: QueueRow):
@@ -541,3 +546,140 @@ class DownloadsPage(QWidget):
 
     def add_log(self, msg: str):
         self.log.appendPlainText(msg)
+
+
+# ------------------------------------------------------------------ Configuración
+class SettingsPage(QWidget):
+    """Idioma y actualizaciones (de la app y de yt-dlp)."""
+
+    language_selected = Signal(str)
+    check_updates = Signal()
+    apply_update = Signal()
+    update_ytdlp = Signal()
+    restart_requested = Signal()
+
+    def __init__(self):
+        super().__init__()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(40, 20, 28, 20)
+        outer.setSpacing(16)
+        outer.addWidget(QLabel(tr("Settings"), objectName="h1"))
+
+        area = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+        body = QWidget()
+        area.setWidget(body)
+        col = QVBoxLayout(body)
+        col.setContentsMargins(0, 0, 8, 0)
+        col.setSpacing(16)
+        col.addWidget(self._language_panel())
+        col.addWidget(self._updates_panel())
+        col.addStretch(1)
+        outer.addWidget(area, 1)
+
+    def _panel(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+        panel = QFrame(objectName="panel")
+        panel.setMaximumWidth(680)
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(20, 18, 20, 20)
+        lay.setSpacing(12)
+        lay.addWidget(QLabel(title, objectName="h2"))
+        return panel, lay
+
+    # ------------------------------------------------------------ idioma
+    def _language_panel(self) -> QFrame:
+        panel, lay = self._panel(tr("Language"))
+        self.cmb_language = QComboBox()
+        for code, name in i18n.LANGUAGES.items():
+            self.cmb_language.addItem(name, code)
+        self.cmb_language.setCurrentIndex(max(0, self.cmb_language.findData(i18n.language())))
+        self.cmb_language.activated.connect(lambda _i: self.language_selected.emit(self.cmb_language.currentData()))
+        row = QHBoxLayout()
+        row.addWidget(self.cmb_language)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(QLabel(tr("The app restarts to apply the change."), objectName="small"))
+        return panel
+
+    def revert_language(self):
+        """Vuelve a mostrar el idioma en uso (si se cancela el cambio)."""
+        self.cmb_language.setCurrentIndex(max(0, self.cmb_language.findData(i18n.language())))
+
+    # ------------------------------------------------------------ actualizaciones
+    def _updates_panel(self) -> QFrame:
+        panel, lay = self._panel(tr("Updates"))
+
+        # la app
+        self.lbl_app = QLabel(objectName="")
+        self.lbl_app.setFont(style.font(14, QFont.DemiBold))
+        lay.addWidget(self.lbl_app)
+        row = QHBoxLayout()
+        self.btn_check = QPushButton(tr("Check for updates"))
+        self.btn_check.clicked.connect(self.check_updates)
+        self.btn_apply = QPushButton(objectName="primary")
+        self.btn_apply.clicked.connect(self.apply_update)
+        self.btn_apply.hide()
+        row.addWidget(self.btn_check)
+        row.addWidget(self.btn_apply)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.lbl_app_status = QLabel(objectName="small", wordWrap=True)
+        self.lbl_app_status.hide()
+        lay.addWidget(self.lbl_app_status)
+        lay.addWidget(QFrame(objectName="sep"))
+
+        # yt-dlp
+        self.lbl_ytdlp = QLabel()
+        self.lbl_ytdlp.setFont(style.font(14, QFont.DemiBold))
+        lay.addWidget(self.lbl_ytdlp)
+        lay.addWidget(QLabel(tr("If downloads stop working, updating yt-dlp almost always fixes it "
+                                "(YouTube changes often)."), objectName="small", wordWrap=True))
+        row = QHBoxLayout()
+        self.btn_ytdlp = QPushButton(tr("Update yt-dlp"))
+        self.btn_ytdlp.clicked.connect(self.update_ytdlp)
+        row.addWidget(self.btn_ytdlp)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.lbl_ytdlp_status = QLabel(objectName="small", wordWrap=True)
+        self.lbl_ytdlp_status.hide()
+        lay.addWidget(self.lbl_ytdlp_status)
+
+        # reiniciar (tras actualizar algo)
+        self.btn_restart = QPushButton(tr("Restart now"), objectName="accent")
+        self.btn_restart.clicked.connect(self.restart_requested)
+        self.btn_restart.hide()
+        row = QHBoxLayout()
+        row.addWidget(self.btn_restart)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        lay.addWidget(QFrame(objectName="sep"))
+        lay.addWidget(QLabel(tr("Looking for updates only asks GitHub for the latest published version, "
+                                "at most once a day. Nothing about you is sent."),
+                             objectName="small", wordWrap=True))
+        return panel
+
+    def set_versions(self, app_version: str, ytdlp_version: str):
+        self.lbl_app.setText(tr("YT Music Downloader {version}", version=app_version))
+        self.lbl_ytdlp.setText(f"yt-dlp {ytdlp_version}")
+
+    def set_app_status(self, text: str):
+        self.lbl_app_status.setText(text)
+        self.lbl_app_status.setVisible(bool(text))
+
+    def set_ytdlp_status(self, text: str):
+        self.lbl_ytdlp_status.setText(text)
+        self.lbl_ytdlp_status.setVisible(bool(text))
+
+    def offer_update(self, tag: str, can_self_update: bool):
+        """Hay una versión nueva: botón para actualizar (git) o para ir a descargarla."""
+        self.btn_apply.setText(tr("Update to {version}", version=tag) if can_self_update
+                               else tr("Download {version}", version=tag))
+        self.btn_apply.show()
+
+    def hide_offer(self):
+        self.btn_apply.hide()
+
+    def show_restart(self):
+        self.btn_restart.show()

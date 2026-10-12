@@ -11,6 +11,7 @@ from yt_dlp.cookies import extract_cookies_from_browser
 from ytmusicapi import YTMusic
 
 from browser_cookies import cookie_source
+from i18n import tr
 
 ORIGIN = "https://music.youtube.com"
 SKIP_PREFIXES = ("SE", "RDPN")     # pódcasts: "Episodios para más tarde", "Nuevos episodios"
@@ -38,8 +39,8 @@ def _client(browser: str) -> YTMusic:
     jar = extract_cookies_from_browser(*cookie_source(browser))
     cookies = {c.name: c.value for c in jar if c.domain.endswith("youtube.com")}
     if "__Secure-3PAPISID" not in cookies:
-        raise RuntimeError(f"No hay una sesión de YouTube iniciada en {browser}. "
-                           "Entra en music.youtube.com con tu cuenta y vuelve a probar.")
+        raise RuntimeError(tr("There is no YouTube session signed in on {browser}. "
+                              "Sign in at music.youtube.com with your account and try again.", browser=browser))
     headers = {
         "cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
         # ytmusicapi reconoce la sesión de navegador por esta cabecera y la recalcula en cada petición
@@ -69,7 +70,7 @@ def fetch_library(browser: str) -> list[RemoteItem]:
         authors = ", ".join(a["name"] for a in p.get("author") or [] if a.get("name"))
         items.append(RemoteItem(
             kind="playlist", id=pid, title=p.get("title") or pid,
-            subtitle=authors or ("Lista automática" if pid == "LM" else ""),
+            subtitle=authors or (tr("Automatic playlist") if pid == "LM" else ""),
             count=_count(p.get("count")),
             url=f"{ORIGIN}/playlist?list={pid}"))
 
