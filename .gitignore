@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Generados en local (python make_app.py / primer arranque)
+YT Music Downloader.app/
+icon.iconset/
+ui/chevron-down.png
+*.zip
