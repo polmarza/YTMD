@@ -2,8 +2,40 @@
 
 🇬🇧 English · 🇪🇸 [Español](README.es.md)
 
-A local desktop tool to download songs, albums and playlists from YouTube Music, with a
-YouTube Music-style library and player. Built to prepare music for a DIY MP3 player (ESP32).
+<p>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="macOS · Windows" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows-555">
+  <img alt="PySide6" src="https://img.shields.io/badge/UI-PySide6%20(Qt)-41CD52?logo=qt&logoColor=white">
+  <img alt="yt-dlp" src="https://img.shields.io/badge/powered%20by-yt--dlp-FF0033">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+**A desktop app to download songs, albums and playlists from YouTube Music — and play them in a
+YouTube Music-style library.** FLAC/WAV/MP3 with tags and cover art, built to prepare music for a
+DIY MP3 player (ESP32), but it works for any offline collection.
+
+![Home: your library as a grid of covers, with the player at the bottom](docs/screenshots/home.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/playlist.png" alt="Playlists with a 2×2 mosaic, one-click play on hover"><br><sub>Playlists with a 2×2 mosaic, one-click play on hover</sub></td>
+    <td width="50%"><img src="docs/screenshots/album.png" alt="Albums with track numbers and colours taken from the cover"><br><sub>Albums with track numbers and colours taken from the cover</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/downloads.png" alt="Download queue with anti-block pauses and automatic retries"><br><sub>Download queue with anti-block pauses and automatic retries</sub></td>
+    <td width="50%"><img src="docs/screenshots/import.png" alt="Import your playlists and saved albums from YouTube Music"><br><sub>Import your playlists and saved albums from YouTube Music</sub></td>
+  </tr>
+</table>
+
+> Screenshots use a made-up demo library (`tools/make_demo_library.py`, `tools/screenshots.py`).
+
+### Highlights
+
+- 🎵 **Songs, albums and playlists** — paste links, or import everything from your account (private playlists too).
+- 🎧 **High quality** — FLAC / WAV / MP3 320 with tags and square cover art; AAC 256 kbps with YouTube Premium.
+- 🧠 **No duplicates** — recognises songs you already have, even from another video, and links them.
+- 🛡️ **Gentle with YouTube** — random pauses, automatic retries and a queue that pauses itself if throttled.
+- 🌍 **English and Spanish** — and in-app updates for the app and yt-dlp.
 
 ## Install and run
 
@@ -13,7 +45,7 @@ You need **Python 3.10+**, **ffmpeg** and **Node.js** (or Deno; yt-dlp uses it t
 
 ```bash
 brew install ffmpeg node
-git clone <repo-url> && cd <folder>
+git clone https://github.com/polmarza/YTMD.git && cd YTMD
 ./run.command                       # the first time it creates the environment and installs dependencies
 .venv/bin/python make_app.py        # optional: creates "YT Music Downloader.app" for the Dock
 ```
@@ -25,8 +57,8 @@ run `make_app.py` again.
 
 ```bat
 winget install Python.Python.3.12 Gyan.FFmpeg OpenJS.NodeJS
-git clone <repo-url>
-cd <folder>
+git clone https://github.com/polmarza/YTMD.git
+cd YTMD
 run.bat
 ```
 
@@ -138,6 +170,8 @@ The app is in **English by default**. **Settings → Language** switches it to S
 apply it (if there were downloads in the queue, they're kept, paused).
 
 ## Updates
+
+<img src="docs/screenshots/settings.png" alt="Settings" width="640">
 
 Everything is in **Settings → Updates**:
 

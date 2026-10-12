@@ -2,9 +2,40 @@
 
 🇬🇧 [English](README.md) · 🇪🇸 Español
 
-Herramienta local para descargar canciones, álbumes y listas de YouTube Music, con una
-biblioteca y reproductor al estilo de YouTube Music. Pensada para preparar música para un
-reproductor MP3 hecho a medida (ESP32).
+<p>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="macOS · Windows" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows-555">
+  <img alt="PySide6" src="https://img.shields.io/badge/UI-PySide6%20(Qt)-41CD52?logo=qt&logoColor=white">
+  <img alt="yt-dlp" src="https://img.shields.io/badge/powered%20by-yt--dlp-FF0033">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+**Una app de escritorio para descargar canciones, álbumes y listas de YouTube Music — y escucharlas en
+una biblioteca al estilo de YouTube Music.** FLAC/WAV/MP3 con etiquetas y portada, pensada para preparar
+música para un reproductor MP3 hecho a medida (ESP32), aunque sirve para cualquier colección offline.
+
+![Inicio: tu biblioteca en cuadrícula de portadas, con el reproductor abajo](docs/screenshots/home.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/playlist.png" alt="Listas con mosaico 2×2 y reproducción con un clic al pasar el ratón"><br><sub>Listas con mosaico 2×2 y reproducción con un clic al pasar el ratón</sub></td>
+    <td width="50%"><img src="docs/screenshots/album.png" alt="Álbumes con números de pista y colores sacados de la portada"><br><sub>Álbumes con números de pista y colores sacados de la portada</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/downloads.png" alt="Cola de descargas con pausas anti-bloqueo y reintentos automáticos"><br><sub>Cola de descargas con pausas anti-bloqueo y reintentos automáticos</sub></td>
+    <td width="50%"><img src="docs/screenshots/import.png" alt="Importa tus listas y álbumes guardados de YouTube Music"><br><sub>Importa tus listas y álbumes guardados de YouTube Music</sub></td>
+  </tr>
+</table>
+
+> Las capturas están hechas con una biblioteca de demostración inventada (`tools/make_demo_library.py`).
+
+### Lo más destacado
+
+- 🎵 **Canciones, álbumes y listas** — pega enlaces o importa todo desde tu cuenta (también listas privadas).
+- 🎧 **Alta calidad** — FLAC / WAV / MP3 320 con etiquetas y portada cuadrada; AAC 256 kbps con YouTube Premium.
+- 🧠 **Sin duplicados** — reconoce lo que ya tienes, aunque sea otro vídeo, y lo enlaza.
+- 🛡️ **Respetuosa con YouTube** — pausas aleatorias, reintentos automáticos y una cola que se pausa sola si te frenan.
+- 🌍 **Inglés y español** — y actualizaciones de la app y de yt-dlp desde la propia app.
 
 ## Instalar y arrancar
 
@@ -14,7 +45,7 @@ Necesitas **Python 3.10+**, **ffmpeg** y **Node.js** (o Deno; yt-dlp lo usa para
 
 ```bash
 brew install ffmpeg node
-git clone <url-del-repo> && cd <carpeta>
+git clone https://github.com/polmarza/YTMD.git && cd YTMD
 ./run.command                       # la primera vez crea el entorno e instala dependencias
 .venv/bin/python make_app.py        # opcional: crea "YT Music Downloader.app" para el Dock
 ```
@@ -26,8 +57,8 @@ proyecto, vuelve a ejecutar `make_app.py`.
 
 ```bat
 winget install Python.Python.3.12 Gyan.FFmpeg OpenJS.NodeJS
-git clone <url-del-repo>
-cd <carpeta>
+git clone https://github.com/polmarza/YTMD.git
+cd YTMD
 run.bat
 ```
 
@@ -141,6 +172,8 @@ La app está en **inglés por defecto**. En **Configuración → Idioma** puedes
 reinicia para aplicarlo (si había descargas en la cola, se conservan en pausa).
 
 ## Actualizaciones
+
+<img src="docs/screenshots/settings.png" alt="Configuración" width="640">
 
 Todo está en **Configuración → Actualizaciones**:
 
